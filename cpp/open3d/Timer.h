@@ -24,12 +24,12 @@
 // IN THE SOFTWARE.
 // ----------------------------------------------------------------------------
 
-#include <cstring>
-#include <string>
+#pragma once
 
-#include "open3d/Timer.h"
+namespace open3d {
+namespace utility {
 
-int main(int argc, char** argv) {
-    using namespace open3d;
-    utility::RunSYCLDemo();
-}
+void RunSYCLDemo();
+
+}  // namespace utility
+}  // namespace open3d
