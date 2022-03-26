@@ -1,3 +1,5 @@
+*/dataset
+output.*
 *.whl
 
 # Windows build temp cmake file

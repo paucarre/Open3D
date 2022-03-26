@@ -1452,12 +1452,12 @@ if(BUILD_CUDA_MODULE)
         # liblapack_static.a in the middle of the targets.
         add_library(3rdparty_cublas INTERFACE)
         target_link_libraries(3rdparty_cublas INTERFACE
-            CUDA::cusolver_static
+            cusolver_static
             ${CUDAToolkit_LIBRARY_DIR}/liblapack_static.a
-            CUDA::cusparse_static
-            CUDA::cublas_static
-            CUDA::cublasLt_static
-            CUDA::culibos
+            cusparse_static
+            cublas_static
+            cublasLt_static
+            culibos
         )
         if(NOT BUILD_SHARED_LIBS)
             # Listed in ${CMAKE_INSTALL_PREFIX}/lib/cmake/Open3D/Open3DTargets.cmake.

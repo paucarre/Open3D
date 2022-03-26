@@ -41,6 +41,7 @@ from common import load_rgbd_file_names, save_poses, load_intrinsic, extract_tri
 def slam(depth_file_names, color_file_names, intrinsic, config):
     n_files = len(color_file_names)
     device = o3d.core.Device(config.device)
+    print(device)
 
     T_frame_to_model = o3d.core.Tensor(np.identity(4))
     model = o3d.t.pipelines.slam.Model(config.voxel_size, 16,
@@ -54,7 +55,6 @@ def slam(depth_file_names, color_file_names, intrinsic, config):
                                                device)
 
     poses = []
-
     for i in range(n_files):
         start = time.time()
 
@@ -65,19 +65,19 @@ def slam(depth_file_names, color_file_names, intrinsic, config):
         input_frame.set_data_from_image('color', color)
 
         if i > 0:
-            result = model.track_frame_to_model(input_frame, raycast_frame,
+            odometry_result = model.track_frame_to_model(input_frame, raycast_frame,
                                                 config.depth_scale,
                                                 config.depth_max,
                                                 config.odometry_distance_thr)
-            T_frame_to_model = T_frame_to_model @ result.transformation
+            T_frame_to_model = T_frame_to_model @ odometry_result.transformation
 
         poses.append(T_frame_to_model.cpu().numpy())
         model.update_frame_pose(i, T_frame_to_model)
         model.integrate(input_frame, config.depth_scale, config.depth_max,
-                        config.trunc_voxel_multiplier)
+                    config.trunc_voxel_multiplier)
         model.synthesize_model_frame(raycast_frame, config.depth_scale,
-                                     config.depth_min, config.depth_max,
-                                     config.trunc_voxel_multiplier, False)
+                                    config.depth_min, config.depth_max,
+                                    config.trunc_voxel_multiplier, False)
         stop = time.time()
         print('{:04d}/{:04d} slam takes {:.4}s'.format(i, n_files,
                                                        stop - start))
