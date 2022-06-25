@@ -44,7 +44,7 @@ Model::Model(float voxel_size,
              int est_block_count,
              const core::Tensor& T_init,
              const core::Device& device)
-    : voxel_grid_(std::vector<std::string>({"tsdf", "weight", "color"}),
+    : voxel_grid_(std::vector<std::string>({"tsdf", "weight", "color", "probabilities"}),
                   std::vector<core::Dtype>(
                           {core::Float32, core::UInt16, core::UInt16}),
                   std::vector<core::SizeVector>({{1}, {1}, {3}}),
@@ -104,14 +104,15 @@ void Model::Integrate(const Frame& input_frame,
                       float trunc_voxel_multiplier) {
     t::geometry::Image depth = input_frame.GetDataAsImage("depth");
     t::geometry::Image color = input_frame.GetDataAsImage("color");
+    t::geometry::Image probabilities = input_frame.GetDataAsImage("probabilities");
     core::Tensor intrinsic = input_frame.GetIntrinsics();
     core::Tensor extrinsic =
             t::geometry::InverseTransformation(GetCurrentFramePose());
     frustum_block_coords_ = voxel_grid_.GetUniqueBlockCoordinates(
             depth, intrinsic, extrinsic, depth_scale, depth_max,
             trunc_voxel_multiplier);
-    voxel_grid_.Integrate(frustum_block_coords_, depth, color, intrinsic,
-                          extrinsic, depth_scale, depth_max,
+    voxel_grid_.Integrate(frustum_block_coords_, depth, color, probabilities,
+                          intrinsic,extrinsic, depth_scale, depth_max,
                           trunc_voxel_multiplier);
 }
 

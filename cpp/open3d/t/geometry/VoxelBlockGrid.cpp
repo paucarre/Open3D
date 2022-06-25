@@ -344,6 +344,62 @@ void VoxelBlockGrid::Integrate(const core::Tensor &block_coords,
             voxel_size_ * trunc_voxel_multiplier, depth_scale, depth_max);
 }
 
+void VoxelBlockGrid::Integrate(const core::Tensor &block_coords,
+                               const Image &depth,
+                               const Image &color,
+                               const Image &probabilities,
+                               const core::Tensor &intrinsic,
+                               const core::Tensor &extrinsic,
+                               float depth_scale,
+                               float depth_max,
+                               float trunc_voxel_multiplier) {
+    Integrate(block_coords, depth, color, probabilities, intrinsic, intrinsic, intrinsic,
+            extrinsic, depth_scale, depth_max, trunc_voxel_multiplier);
+}
+
+void VoxelBlockGrid::Integrate(const core::Tensor &block_coords,
+                               const Image &depth,
+                               const Image &color,
+                               const Image &probabilities,
+                               const core::Tensor &depth_intrinsic,
+                               const core::Tensor &color_intrinsic,
+                               const core::Tensor &probabilities_intrinsic,
+                               const core::Tensor &extrinsic,
+                               float depth_scale,
+                               float depth_max,
+                               float trunc_voxel_multiplier) {
+    AssertInitialized();
+    bool integrate_color = color.AsTensor().NumElements() > 0;
+    bool integrate_probabilities = probabilities.AsTensor().NumElements() > 0;
+
+    CheckBlockCoorinates(block_coords);
+    CheckDepthTensor(depth.AsTensor());
+    if (integrate_color) {
+        CheckColorTensor(color.AsTensor());
+    }
+    if (integrate_probabilities) {
+        CheckProbabilityTensor(probabilities.AsTensor());
+    }
+    CheckIntrinsicTensor(depth_intrinsic);
+    CheckIntrinsicTensor(color_intrinsic);
+    CheckIntrinsicTensor(probabilities_intrinsic);
+    CheckExtrinsicTensor(extrinsic);
+
+    core::Tensor buf_indices, masks;
+    block_hashmap_->Activate(block_coords, buf_indices, masks);
+    block_hashmap_->Find(block_coords, buf_indices, masks);
+
+    core::Tensor block_keys = block_hashmap_->GetKeyTensor();
+    TensorMap block_value_map =
+            ConstructTensorMap(*block_hashmap_, name_attr_map_);
+
+    //kernel::voxel_grid::Integrate(
+    //        depth.AsTensor(), color.AsTensor(), probabilities.AsTensor(), buf_indices, block_keys,
+    //        block_value_map, depth_intrinsic, color_intrinsic, probabilities_intrinsic, extrinsic,
+    //        block_resolution_, voxel_size_,
+    //        voxel_size_ * trunc_voxel_multiplier, depth_scale, depth_max);
+}
+
 TensorMap VoxelBlockGrid::RayCast(const core::Tensor &block_coords,
                                   const core::Tensor &intrinsic,
                                   const core::Tensor &extrinsic,

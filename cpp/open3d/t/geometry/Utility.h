@@ -53,6 +53,16 @@ inline void CheckColorTensor(const core::Tensor& color) {
     }
 }
 
+inline void CheckProbabilityTensor(const core::Tensor& probabilities) {
+    if (probabilities.NumElements() == 0) {
+        utility::LogError("Input probabilities is empty.");
+    }
+    if (probabilities.GetDtype() != core::Float32) {
+        utility::LogError("Unsupported probabilities input dtype {}.",
+                          probabilities.GetDtype().ToString());
+    }
+}
+
 inline void CheckIntrinsicTensor(const core::Tensor& intrinsic) {
     if (intrinsic.GetShape() != core::SizeVector{3, 3}) {
         utility::LogError("Unsupported intrinsic matrix shape {}",

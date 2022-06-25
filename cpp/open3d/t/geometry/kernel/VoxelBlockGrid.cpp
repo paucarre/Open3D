@@ -216,6 +216,80 @@ void Integrate(const core::Tensor& depth,
     }
 }
 
+
+void Integrate(const core::Tensor& depth,
+               const core::Tensor& color,
+               const core::Tensor& probabilities,
+               const core::Tensor& block_indices,
+               const core::Tensor& block_keys,
+               TensorMap& block_value_map,
+               const core::Tensor& depth_intrinsic,
+               const core::Tensor& color_intrinsic,
+               const core::Tensor& probabilities_intrinsic,
+               const core::Tensor& extrinsic,
+               index_t resolution,
+               float voxel_size,
+               float sdf_trunc,
+               float depth_scale,
+               float depth_max) {
+    using tsdf_t = float;
+    core::Dtype block_weight_dtype = core::Dtype::Float32;
+    core::Dtype block_color_dtype = core::Dtype::Float32;
+    if (block_value_map.Contains("weight")) {
+        block_weight_dtype = block_value_map.at("weight").GetDtype();
+    }
+    if (block_value_map.Contains("color")) {
+        block_color_dtype = block_value_map.at("color").GetDtype();
+    }
+
+    core::Dtype input_depth_dtype = depth.GetDtype();
+    core::Dtype input_color_dtype = (input_depth_dtype == core::Dtype::Float32)
+                                            ? core::Dtype::Float32
+                                            : core::Dtype::UInt8;
+    if (color.NumElements() > 0) {
+        input_color_dtype = color.GetDtype();
+    }
+
+    core::Device::DeviceType device_type = depth.GetDevice().GetType();
+    if (device_type == core::Device::DeviceType::CPU) {
+        DISPATCH_INPUT_DTYPE_TO_TEMPLATE(
+                input_depth_dtype, input_color_dtype, [&] {
+                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
+                            block_weight_dtype, block_color_dtype, [&] {
+                                IntegrateCPU<input_depth_t, input_color_t,
+                                             tsdf_t, weight_t, color_t>(
+                                        depth, color, probabilities, block_indices, block_keys,
+                                        block_value_map, depth_intrinsic,
+                                        color_intrinsic, probabilities_intrinsic,
+                                        extrinsic, resolution,
+                                        voxel_size, sdf_trunc, depth_scale,
+                                        depth_max);
+                            });
+                });
+    } else if (device_type == core::Device::DeviceType::CUDA) {
+#ifdef BUILD_CUDA_MODULE
+        DISPATCH_INPUT_DTYPE_TO_TEMPLATE(
+                input_depth_dtype, input_color_dtype, [&] {
+                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
+                            block_weight_dtype, block_color_dtype, [&] {
+                                IntegrateCUDA<input_depth_t, input_color_t,
+                                             tsdf_t, weight_t, color_t>(
+                                        depth, color, probabilities, block_indices, block_keys,
+                                        block_value_map, depth_intrinsic,
+                                        color_intrinsic, probabilities_intrinsic,
+                                        extrinsic, resolution,
+                                        voxel_size, sdf_trunc, depth_scale,
+                                        depth_max);
+                            });
+                });
+#else
+        utility::LogError("Not compiled with CUDA, but CUDA device is used.");
+#endif
+    } else {
+        utility::LogError("Unimplemented device");
+    }
+}
+
 void EstimateRange(const core::Tensor& block_keys,
                    core::Tensor& range_minmax_map,
                    const core::Tensor& intrinsics,
