@@ -236,6 +236,24 @@ template void IntegrateCPU<float, float, float, uint16_t, uint16_t>(
         FN_ARGUMENTS);
 template void IntegrateCPU<float, float, float, float, float>(FN_ARGUMENTS);
 
+#define FN_ARGUMENTS_PROBS                                                                    \
+    const core::Tensor &depth, const core::Tensor &color, const core::Tensor& probabilities,  \
+            const core::Tensor &indices, const core::Tensor &block_keys,                      \
+            TensorMap &value_tensor_map, const core::Tensor &depth_intrinsic,                 \
+            const core::Tensor &color_intrinsic, const core::Tensor& probabilities_intrinsic, \
+            const core::Tensor &extrinsic, index_t resolution,                                \
+            float voxel_size, float sdf_trunc, float depth_scale,                             \
+            float depth_max
+
+template void IntegrateCPU<uint16_t, uint8_t, float, float, uint16_t, uint16_t, float>(
+        FN_ARGUMENTS_PROBS);
+template void IntegrateCPU<uint16_t, uint8_t, float, float, float, float, float>(
+        FN_ARGUMENTS_PROBS);
+template void IntegrateCPU<float, float, float, float, uint16_t, uint16_t, float>(
+        FN_ARGUMENTS_PROBS);
+template void IntegrateCPU<float, float, float, float, float, float, float>(FN_ARGUMENTS_PROBS);
+
+
 #undef FN_ARGUMENTS
 
 #define FN_ARGUMENTS                                                           \

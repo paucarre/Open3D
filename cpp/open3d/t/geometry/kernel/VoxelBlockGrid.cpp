@@ -114,7 +114,7 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
             using color_t = float;                                          \
             return __VA_ARGS__();                                           \
         } else if (WEIGHT_DTYPE == open3d::core::UInt16 &&                  \
-                   COLOR_DTYPE == open3d::core::UInt16) {                   \
+                   COLOR_DTYPE == open3d::core::UInt16 ) {                  \
             using weight_t = uint16_t;                                      \
             using color_t = uint16_t;                                       \
             return __VA_ARGS__();                                           \
@@ -135,7 +135,7 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
             using input_color_t = float;                                       \
             return __VA_ARGS__();                                              \
         } else if (DEPTH_DTYPE == open3d::core::UInt16 &&                      \
-                   COLOR_DTYPE == open3d::core::UInt8) {                       \
+                   COLOR_DTYPE == open3d::core::UInt8 ) {                      \
             using input_depth_t = uint16_t;                                    \
             using input_color_t = uint8_t;                                     \
             return __VA_ARGS__();                                              \
@@ -144,6 +144,55 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                     "Unsupported input data type combination. Expected "       \
                     "(float, float) or (uint16, uint8), but received ({} {})", \
                     DEPTH_DTYPE.ToString(), COLOR_DTYPE.ToString());           \
+        }                                                                      \
+    }()
+
+#define DISPATCH_VALUE_DTYPE_TO_TEMPLATE_PROB(WEIGHT_DTYPE, COLOR_DTYPE, PROBABILITY_TYPE, ...)    \
+    [&] {                                                                   \
+        if (WEIGHT_DTYPE == open3d::core::Float32 &&                        \
+            COLOR_DTYPE == open3d::core::Float32 &&                         \
+            PROBABILITY_TYPE == open3d::core::Float32) {                    \
+            using weight_t = float;                                         \
+            using color_t = float;                                          \
+            using probability_t = float;                                    \
+            return __VA_ARGS__();                                           \
+        } else if (WEIGHT_DTYPE == open3d::core::UInt16 &&                  \
+                   COLOR_DTYPE == open3d::core::UInt16 &&                   \
+                   PROBABILITY_TYPE == open3d::core::Float32) {             \
+            using weight_t = uint16_t;                                      \
+            using color_t = uint16_t;                                       \
+            using probability_t = float;                                    \
+            return __VA_ARGS__();                                           \
+        } else {                                                            \
+            utility::LogError(                                              \
+                    "Unsupported value data type combination. Expected "    \
+                    "(float, float) or (uint16, uint16), but received ({} " \
+                    "{}).",                                                 \
+                    WEIGHT_DTYPE.ToString(), COLOR_DTYPE.ToString());       \
+        }                                                                   \
+    }()
+
+#define DISPATCH_INPUT_DTYPE_TO_TEMPLATE_PROB(DEPTH_DTYPE, COLOR_DTYPE, PROBABILITY_DTYPE, ...)        \
+    [&] {                                                                      \
+        if (DEPTH_DTYPE == open3d::core::Float32 &&                            \
+            COLOR_DTYPE == open3d::core::Float32 &&                            \
+            PROBABILITY_DTYPE == open3d::core::Float32) {                       \
+            using input_depth_t = float;                                       \
+            using input_color_t = float;                                       \
+            using input_probability_t = float;                                 \
+            return __VA_ARGS__();                                              \
+        } else if (DEPTH_DTYPE == open3d::core::UInt16 &&                      \
+                   COLOR_DTYPE == open3d::core::UInt8 &&                       \
+                   PROBABILITY_DTYPE == open3d::core::Float32) {                \
+            using input_depth_t = uint16_t;                                    \
+            using input_color_t = uint8_t;                                     \
+            using input_probability_t = float;                                 \
+            return __VA_ARGS__();                                              \
+        } else {                                                               \
+            utility::LogError(                                                 \
+                    "Unsupported input data type combination. Expected "       \
+                    "(float, float, float) or (uint16, uint8, float), but received ({} {} {})", \
+                    DEPTH_DTYPE.ToString(), COLOR_DTYPE.ToString(), PROBABILITY_DTYPE.ToString());           \
         }                                                                      \
     }()
 
@@ -174,6 +223,7 @@ void Integrate(const core::Tensor& depth,
     core::Dtype input_color_dtype = (input_depth_dtype == core::Dtype::Float32)
                                             ? core::Dtype::Float32
                                             : core::Dtype::UInt8;
+
     if (color.NumElements() > 0) {
         input_color_dtype = color.GetDtype();
     }
@@ -246,18 +296,20 @@ void Integrate(const core::Tensor& depth,
     core::Dtype input_color_dtype = (input_depth_dtype == core::Dtype::Float32)
                                             ? core::Dtype::Float32
                                             : core::Dtype::UInt8;
+    core::Dtype input_probability_dtype = probabilities.GetDtype();
+
     if (color.NumElements() > 0) {
         input_color_dtype = color.GetDtype();
     }
 
     core::Device::DeviceType device_type = depth.GetDevice().GetType();
     if (device_type == core::Device::DeviceType::CPU) {
-        DISPATCH_INPUT_DTYPE_TO_TEMPLATE(
-                input_depth_dtype, input_color_dtype, [&] {
-                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
-                            block_weight_dtype, block_color_dtype, [&] {
-                                IntegrateCPU<input_depth_t, input_color_t,
-                                             tsdf_t, weight_t, color_t>(
+        DISPATCH_INPUT_DTYPE_TO_TEMPLATE_PROB(
+                input_depth_dtype, input_color_dtype, input_probability_dtype, [&] {
+                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE_PROB(
+                            block_weight_dtype, block_color_dtype, input_probability_dtype, [&] {
+                                IntegrateCPU<input_depth_t, input_color_t, input_probability_t,
+                                             tsdf_t, weight_t, color_t, probability_t>(
                                         depth, color, probabilities, block_indices, block_keys,
                                         block_value_map, depth_intrinsic,
                                         color_intrinsic, probabilities_intrinsic,
@@ -268,12 +320,12 @@ void Integrate(const core::Tensor& depth,
                 });
     } else if (device_type == core::Device::DeviceType::CUDA) {
 #ifdef BUILD_CUDA_MODULE
-        DISPATCH_INPUT_DTYPE_TO_TEMPLATE(
-                input_depth_dtype, input_color_dtype, [&] {
-                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
-                            block_weight_dtype, block_color_dtype, [&] {
-                                IntegrateCUDA<input_depth_t, input_color_t,
-                                             tsdf_t, weight_t, color_t>(
+        DISPATCH_INPUT_DTYPE_TO_TEMPLATE_PROB(
+                input_depth_dtype, input_color_dtype, input_probability_dtype, [&] {
+                    DISPATCH_VALUE_DTYPE_TO_TEMPLATE_PROB(
+                            block_weight_dtype, block_color_dtype, input_probability_dtype, [&] {
+                                IntegrateCUDA<input_depth_t, input_color_t, input_probability_t,
+                                             tsdf_t, weight_t, color_t, probability_t>(
                                         depth, color, probabilities, block_indices, block_keys,
                                         block_value_map, depth_intrinsic,
                                         color_intrinsic, probabilities_intrinsic,

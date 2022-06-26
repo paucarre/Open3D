@@ -316,9 +316,11 @@ void IntegrateCPU
 
 template <typename input_depth_t,
           typename input_color_t,
+          typename input_probability_t,
           typename tsdf_t,
           typename weight_t,
-          typename color_t>
+          typename color_t,
+          typename probability_t>
 #if defined(__CUDACC__)
 void IntegrateCUDA
 #else
@@ -390,11 +392,11 @@ void IntegrateCPU
 
     bool integrate_probabilities =
             block_value_map.Contains("probabilities") && probabilities.NumElements() > 0;
-    color_t* probabilities_base_ptr = nullptr;
+    probability_t* probabilities_base_ptr = nullptr;
     ArrayIndexer probabilities_indexer;
 
     if (integrate_probabilities) {
-        probabilities_base_ptr = block_value_map.at("probabilities").GetDataPtr<float>();
+        probabilities_base_ptr = block_value_map.at("probabilities").GetDataPtr<probability_t>();
         probabilities_indexer = ArrayIndexer(probabilities, 2);
     }
 
@@ -483,7 +485,7 @@ void IntegrateCPU
         }
         if (integrate_probabilities) {
 
-            float* probabilities_ptr = probabilities_base_ptr + num_classes * linear_idx;
+            probability_t* probabilities_ptr = probabilities_base_ptr + num_classes * linear_idx;
 
             // Unproject ui, vi with depth_intrinsic, then project back with
             // probabilities_intrinsic
@@ -496,8 +498,8 @@ void IntegrateCPU
                 ui = round(uf);
                 vi = round(vf);
 
-                float* input_probabilities_ptr =
-                        probabilities_indexer.GetDataPtr<float>(ui, vi);
+                input_probability_t* input_probabilities_ptr =
+                        probabilities_indexer.GetDataPtr<input_probability_t>(ui, vi);
 
                 for (index_t class_idx = 0; class_idx < num_classes; ++class_idx) {
                     probabilities_ptr[class_idx] = (weight * probabilities_ptr[class_idx] +

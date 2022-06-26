@@ -201,9 +201,11 @@ void IntegrateCPU(const core::Tensor& depth,
 
 template <typename input_depth_t,
           typename input_color_t,
+          typename input_probability_t,
           typename tsdf_t,
           typename weight_t,
-          typename color_t>
+          typename color_t,
+          typename probability_t>
 void IntegrateCPU(const core::Tensor& depth,
                     const core::Tensor& color,
                     const core::Tensor& probabilities,
