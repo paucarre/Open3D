@@ -475,8 +475,6 @@ include(Open3DSetGlobalProperties)
 include(Open3DShowAndAbortOnWarning)
 include(Open3DSYCLTargetSources)
 
-include(3rdparty/FindCUDAToolkit.cmake)
-
 # Enumerate all third-party libraries which we need later
 # This creates the necessary targets and sets the
 # Open3D_3RDPARTY_*_TARGETS variables we use in open3d_link_3rdparty_libraries
