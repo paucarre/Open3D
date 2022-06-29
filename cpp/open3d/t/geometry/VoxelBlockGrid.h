@@ -184,6 +184,33 @@ public:
                    float depth_max = 3.0f,
                    float trunc_voxel_multiplier = 8.0f);
 
+
+    /// Specific operation for TSDF volumes.
+    /// Similar to RGB-D integration, but uses the same intrinsics for depth,
+    /// color and probabilities
+    void Integrate(const core::Tensor &block_coords,
+                const Image &depth,
+                const Image &color,
+                const Image &probabilities,
+                const core::Tensor &intrinsic,
+                const core::Tensor &extrinsic,
+                float depth_scale = 1000.0f,
+                float depth_max = 3.0f,
+                float trunc_voxel_multiplier = 8.0f);
+
+    void Integrate(const core::Tensor &block_coords,
+                   const Image &depth,
+                   const Image &color,
+                   const Image &probabilities,
+                   const core::Tensor &depth_intrinsic,
+                   const core::Tensor &color_intrinsic,
+                   const core::Tensor &probabilities_intrinsic,
+                   const core::Tensor &extrinsic,
+                   float depth_scale = 1000.0f,
+                   float depth_max = 3.0f,
+                   float trunc_voxel_multiplier = 8.0f);
+
+
     /// Specific operation for TSDF volumes.
     /// Perform volumetric ray casting in the selected block coordinates.
     /// Return selected properties from the frame.

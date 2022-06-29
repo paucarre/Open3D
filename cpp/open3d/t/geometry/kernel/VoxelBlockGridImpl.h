@@ -312,6 +312,210 @@ void IntegrateCPU
 #endif
 }
 
+template <typename input_depth_t,
+          typename input_color_t,
+          typename input_probability_t,
+          typename tsdf_t,
+          typename weight_t,
+          typename color_t,
+          typename probability_t>
+#if defined(__CUDACC__)
+void IntegrateCUDA
+#else
+void IntegrateCPU
+#endif
+        (const core::Tensor& depth,
+         const core::Tensor& color,
+         const core::Tensor& probabilities,
+         const core::Tensor& indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& color_intrinsic,
+         const core::Tensor& probabilities_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max) {
+
+    int64_t num_classes = probabilities.GetLength();
+
+    // Parameters
+    index_t resolution2 = resolution * resolution;
+    index_t resolution3 = resolution2 * resolution;
+
+    TransformIndexer transform_indexer(depth_intrinsic, extrinsics, voxel_size);
+    TransformIndexer colormap_indexer(
+            color_intrinsic,
+            core::Tensor::Eye(4, core::Dtype::Float64, core::Device("CPU:0")));
+    TransformIndexer probabilitiesmap_indexer(
+            probabilities_intrinsic,
+            core::Tensor::Eye(4, core::Dtype::Float64, core::Device("CPU:0")));
+
+    ArrayIndexer voxel_indexer({resolution, resolution, resolution});
+
+    ArrayIndexer block_keys_indexer(block_keys, 1);
+    ArrayIndexer depth_indexer(depth, 2);
+    core::Device device = block_keys.GetDevice();
+
+    const index_t* indices_ptr = indices.GetDataPtr<index_t>();
+
+    if (!block_value_map.Contains("tsdf") ||
+        !block_value_map.Contains("weight")) {
+        utility::LogError(
+                "TSDF and/or weight not allocated in blocks, please implement "
+                "customized integration.");
+    }
+    tsdf_t* tsdf_base_ptr = block_value_map.at("tsdf").GetDataPtr<tsdf_t>();
+    weight_t* weight_base_ptr =
+            block_value_map.at("weight").GetDataPtr<weight_t>();
+
+    bool integrate_color =
+            block_value_map.Contains("color") && color.NumElements() > 0;
+    color_t* color_base_ptr = nullptr;
+    ArrayIndexer color_indexer;
+
+    float color_multiplier = 1.0;
+    if (integrate_color) {
+        color_base_ptr = block_value_map.at("color").GetDataPtr<color_t>();
+        color_indexer = ArrayIndexer(color, 2);
+
+        // Float32: [0, 1] -> [0, 255]
+        if (color.GetDtype() == core::Float32) {
+            color_multiplier = 255.0;
+        }
+    }
+
+    bool integrate_probabilities =
+            block_value_map.Contains("probabilities") && probabilities.NumElements() > 0;
+    probability_t* probabilities_base_ptr = nullptr;
+    ArrayIndexer probabilities_indexer;
+
+    if (integrate_probabilities) {
+        probabilities_base_ptr = block_value_map.at("probabilities").GetDataPtr<probability_t>();
+        probabilities_indexer = ArrayIndexer(probabilities, 2);
+    }
+
+    index_t n = indices.GetLength() * resolution3;
+    core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
+        // Natural index (0, N) -> (block_idx, voxel_idx)
+        index_t block_idx = indices_ptr[workload_idx / resolution3];
+        index_t voxel_idx = workload_idx % resolution3;
+
+        /// Coordinate transform
+        // block_idx -> (x_block, y_block, z_block)
+        index_t* block_key_ptr =
+                block_keys_indexer.GetDataPtr<index_t>(block_idx);
+        index_t xb = block_key_ptr[0];
+        index_t yb = block_key_ptr[1];
+        index_t zb = block_key_ptr[2];
+
+        // voxel_idx -> (x_voxel, y_voxel, z_voxel)
+        index_t xv, yv, zv;
+        voxel_indexer.WorkloadToCoord(voxel_idx, &xv, &yv, &zv);
+
+        // coordinate in world (in voxel)
+        index_t x = xb * resolution + xv;
+        index_t y = yb * resolution + yv;
+        index_t z = zb * resolution + zv;
+
+        // coordinate in camera (in voxel -> in meter)
+        float xc, yc, zc, u, v;
+        transform_indexer.RigidTransform(static_cast<float>(x),
+                                         static_cast<float>(y),
+                                         static_cast<float>(z), &xc, &yc, &zc);
+
+        // coordinate in image (in pixel)
+        transform_indexer.Project(xc, yc, zc, &u, &v);
+        if (!depth_indexer.InBoundary(u, v)) {
+            return;
+        }
+
+        index_t ui = static_cast<index_t>(u);
+        index_t vi = static_cast<index_t>(v);
+
+        // Associate image workload and compute SDF and
+        // TSDF.
+        float depth =
+                *depth_indexer.GetDataPtr<input_depth_t>(ui, vi) / depth_scale;
+
+        float sdf = depth - zc;
+        if (depth <= 0 || depth > depth_max || zc <= 0 || sdf < -sdf_trunc) {
+            return;
+        }
+        sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
+        sdf /= sdf_trunc;
+
+        index_t linear_idx = block_idx * resolution3 + voxel_idx;
+
+        tsdf_t* tsdf_ptr = tsdf_base_ptr + linear_idx;
+        weight_t* weight_ptr = weight_base_ptr + linear_idx;
+
+        float inv_wsum = 1.0f / (*weight_ptr + 1);
+        float weight = *weight_ptr;
+        *tsdf_ptr = (weight * (*tsdf_ptr) + sdf) * inv_wsum;
+
+        if (integrate_color) {
+            color_t* color_ptr = color_base_ptr + 3 * linear_idx;
+
+            // Unproject ui, vi with depth_intrinsic, then project back with
+            // color_intrinsic
+            float x, y, z;
+            transform_indexer.Unproject(ui, vi, 1.0, &x, &y, &z);
+
+            float uf, vf;
+            colormap_indexer.Project(x, y, z, &uf, &vf);
+            if (color_indexer.InBoundary(uf, vf)) {
+                ui = round(uf);
+                vi = round(vf);
+
+                input_color_t* input_color_ptr =
+                        color_indexer.GetDataPtr<input_color_t>(ui, vi);
+
+                for (index_t i = 0; i < 3; ++i) {
+                    color_ptr[i] = (weight * color_ptr[i] +
+                                    input_color_ptr[i] * color_multiplier) *
+                                   inv_wsum;
+                }
+            }
+        }
+        if (integrate_probabilities) {
+
+            probability_t* probabilities_ptr = probabilities_base_ptr + num_classes * linear_idx;
+
+            // Unproject ui, vi with depth_intrinsic, then project back with
+            // probabilities_intrinsic
+            float x, y, z;
+            transform_indexer.Unproject(ui, vi, 1.0, &x, &y, &z);
+
+            float uf, vf;
+            probabilitiesmap_indexer.Project(x, y, z, &uf, &vf);
+            if (probabilities_indexer.InBoundary(uf, vf)) {
+                ui = round(uf);
+                vi = round(vf);
+
+                input_probability_t* input_probabilities_ptr =
+                        probabilities_indexer.GetDataPtr<input_probability_t>(ui, vi);
+
+                for (index_t class_idx = 0; class_idx < num_classes; ++class_idx) {
+                    probabilities_ptr[class_idx] = (weight * probabilities_ptr[class_idx] +
+                                    input_probabilities_ptr[class_idx]) *
+                                   inv_wsum;
+                }
+            }
+        }
+        *weight_ptr = weight + 1;
+    });
+
+#if defined(__CUDACC__)
+    core::cuda::Synchronize();
+#endif
+}
+
+
+
 #if defined(__CUDACC__)
 void EstimateRangeCUDA
 #else
