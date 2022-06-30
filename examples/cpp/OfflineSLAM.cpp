@@ -135,6 +135,9 @@ int main(int argc, char* argv[]) {
     int block_count =
             utility::GetProgramOptionAsInt(argc, argv, "--block_count", 10000);
 
+    int num_classes =
+            utility::GetProgramOptionAsInt(argc, argv, "--num_classes", 3);
+
     // Odometry configurations
     float depth_scale = static_cast<float>(utility::GetProgramOptionAsDouble(
             argc, argv, "--depth_scale", 1000.f));
@@ -148,7 +151,7 @@ int main(int argc, char* argv[]) {
             Tensor::Eye(4, core::Dtype::Float64, core::Device("CPU:0"));
 
     t::pipelines::slam::Model model(voxel_size, block_resolution, block_count,
-                                    T_frame_to_model, device);
+                                    num_classes, T_frame_to_model, device);
 
     // Initialize frame
     Image ref_depth = *t::io::CreateImageFromFile(depth_filenames[0]);

@@ -74,9 +74,10 @@ void pybind_slam_model(py::module &m) {
     py::detail::bind_copy_functions<Model>(model);
 
     model.def(py::init<>());
-    model.def(py::init<float, int, int, core::Tensor, core::Device>(),
+    model.def(py::init<float, int, int, int, core::Tensor, core::Device>(),
               "Constructor of a VoxelBlockGrid", "voxel_size"_a,
               "block_resolution"_a = 16, " block_count"_a = 10000,
+              "classes"_a = 3,
               "transformation"_a = core::Tensor::Eye(4, core::Float64,
                                                      core::Device("CPU:0")),
               "device"_a = core::Device("CUDA:0"));

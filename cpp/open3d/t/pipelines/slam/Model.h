@@ -47,6 +47,7 @@ public:
     Model(float voxel_size,
           int block_resolution,
           int block_count,
+          int classes = 3,
           const core::Tensor& T_init = core::Tensor::Eye(4,
                                                          core::Float64,
                                                          core::Device("CPU:0")),
@@ -127,8 +128,8 @@ public:
     /// T_frame_to_model, maintained tracking state in a (4, 4), Float64 Tensor
     /// on CPU.
     core::Tensor T_frame_to_world_;
-
     int frame_id_ = -1;
+    //int classes_;
 };
 }  // namespace slam
 }  // namespace pipelines

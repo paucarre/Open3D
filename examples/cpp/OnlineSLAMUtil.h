@@ -261,6 +261,11 @@ public:
                 "Raycast color", &prop_values_.raycast_color, true,
                 "Enable bilinear interpolated color image for visualization.");
 
+        adjustable_props_->AddIntSlider(
+                "Number of classes", &prop_values_.num_classes,
+                default_param.at("num_classes"), 1, 500,
+                "Number of classes the classifier supports.");
+
         panel_->AddChild(std::make_shared<gui::Label>("Starting settings"));
         panel_->AddChild(fixed_props_);
         panel_->AddFixed(vspacing);
@@ -303,6 +308,7 @@ public:
                                     std::make_shared<t::pipelines::slam::Model>(
                                             voxel_size, 16,
                                             prop_values_.block_count,
+                                            prop_values_.num_classes,
                                             core::Tensor::Eye(
                                                     4, core::Dtype::Float64,
                                                     core::Device("CPU:0")),
@@ -440,6 +446,7 @@ protected:
         std::atomic<int> estimated_points;
         std::atomic<int> depth_scale;
         std::atomic<int> block_count;
+        std::atomic<int> num_classes;
         std::atomic<double> voxel_size;
         std::atomic<double> trunc_multiplier;
         std::atomic<double> depth_max;
