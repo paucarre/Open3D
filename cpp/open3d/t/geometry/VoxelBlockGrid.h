@@ -246,6 +246,12 @@ public:
     PointCloud ExtractPointCloud(float weight_threshold = 3.0f,
                                  int estimated_point_number = -1);
 
+
+    PointCloud ExtractDetectionPointCloud(float weight_threshold ,
+                                              int estimated_number,
+                                              int class_index,
+                                              float minimum_probability);
+
     /// Specific operation for TSDF volumes.
     /// Extract mesh near iso-surfaces with Marching Cubes.
     /// Weight threshold is used to filter outliers. By default we use 3.0,

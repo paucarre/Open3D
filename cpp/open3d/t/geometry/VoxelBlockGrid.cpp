@@ -509,6 +509,44 @@ PointCloud VoxelBlockGrid::ExtractPointCloud(float weight_threshold,
     return pcd;
 }
 
+PointCloud VoxelBlockGrid::ExtractDetectionPointCloud(float weight_threshold,
+                                            int estimated_point_number,
+                                            int class_index,
+                                            float minimum_probability){
+    AssertInitialized();
+    core::Tensor active_buf_indices;
+    block_hashmap_->GetActiveIndices(active_buf_indices);
+
+    core::Tensor active_nb_buf_indices, active_nb_masks;
+    std::tie(active_nb_buf_indices, active_nb_masks) =
+            BufferRadiusNeighbors(block_hashmap_, active_buf_indices);
+
+    // Extract points around zero-crossings ( isosurface )
+    core::Tensor points, normals, colors, probabilities;
+
+    core::Tensor block_keys = block_hashmap_->GetKeyTensor();
+    TensorMap block_value_map =
+            ConstructTensorMap(*block_hashmap_, name_attr_map_);
+    kernel::voxel_grid::ExtractDetectionPointCloud(
+            class_index, minimum_probability,
+            active_buf_indices, active_nb_buf_indices, active_nb_masks,
+            block_keys, block_value_map, points, normals, colors,
+            probabilities,
+            block_resolution_, voxel_size_, weight_threshold,
+            estimated_point_number);
+
+    auto pcd = PointCloud(points.Slice(0, 0, estimated_point_number));
+    pcd.SetPointNormals(normals.Slice(0, 0, estimated_point_number));
+
+    if (colors.GetLength() == normals.GetLength()) {
+        pcd.SetPointColors(colors.Slice(0, 0, estimated_point_number));
+    }
+
+    return pcd;
+}
+
+
+
 TriangleMesh VoxelBlockGrid::ExtractTriangleMesh(float weight_threshold,
                                                  int estimated_vertex_number) {
     AssertInitialized();

@@ -458,53 +458,45 @@ void IntegrateCPU
         float inv_wsum = 1.0f / (*weight_ptr + 1);
         float weight = *weight_ptr;
         *tsdf_ptr = (weight * (*tsdf_ptr) + sdf) * inv_wsum;
-
-        if (integrate_color) {
-            color_t* color_ptr = color_base_ptr + 3 * linear_idx;
-
+        if (integrate_color || integrate_probabilities) {
             // Unproject ui, vi with depth_intrinsic, then project back with
-            // color_intrinsic
+            // color_intrinsic/probabilities_intrinsic
             float x, y, z;
             transform_indexer.Unproject(ui, vi, 1.0, &x, &y, &z);
+            if (integrate_color) {
+                float uf, vf;
+                colormap_indexer.Project(x, y, z, &uf, &vf);
+                if (color_indexer.InBoundary(uf, vf)) {
+                    index_t ui_color = round(uf);
+                    index_t vi_color = round(vf);
+                    color_t* color_ptr = color_base_ptr + 3 * linear_idx;
 
-            float uf, vf;
-            colormap_indexer.Project(x, y, z, &uf, &vf);
-            if (color_indexer.InBoundary(uf, vf)) {
-                ui = round(uf);
-                vi = round(vf);
+                    input_color_t* input_color_ptr =
+                            color_indexer.GetDataPtr<input_color_t>(ui_color, vi_color);
 
-                input_color_t* input_color_ptr =
-                        color_indexer.GetDataPtr<input_color_t>(ui, vi);
-
-                for (index_t i = 0; i < 3; ++i) {
-                    color_ptr[i] = (weight * color_ptr[i] +
-                                    input_color_ptr[i] * color_multiplier) *
-                                   inv_wsum;
+                    for (index_t i = 0; i < 3; ++i) {
+                        color_ptr[i] = (weight * color_ptr[i] +
+                                        input_color_ptr[i] * color_multiplier) *
+                                    inv_wsum;
+                    }
                 }
             }
-        }
-        if (integrate_probabilities) {
+            if (integrate_probabilities) {
+                float uf, vf;
+                probabilitiesmap_indexer.Project(x, y, z, &uf, &vf);
+                if (probabilities_indexer.InBoundary(uf, vf)) {
+                    index_t ui_prob = round(uf);
+                    index_t vi_prob = round(vf);
 
-            probability_t* probabilities_ptr = probabilities_base_ptr + num_classes * linear_idx;
+                    probability_t* probabilities_ptr = probabilities_base_ptr + num_classes * linear_idx;
+                    input_probability_t* input_probabilities_ptr =
+                            probabilities_indexer.GetDataPtr<input_probability_t>(ui_prob, vi_prob);
 
-            // Unproject ui, vi with depth_intrinsic, then project back with
-            // probabilities_intrinsic
-            float x, y, z;
-            transform_indexer.Unproject(ui, vi, 1.0, &x, &y, &z);
-
-            float uf, vf;
-            probabilitiesmap_indexer.Project(x, y, z, &uf, &vf);
-            if (probabilities_indexer.InBoundary(uf, vf)) {
-                ui = round(uf);
-                vi = round(vf);
-
-                input_probability_t* input_probabilities_ptr =
-                        probabilities_indexer.GetDataPtr<input_probability_t>(ui, vi);
-
-                for (index_t class_idx = 0; class_idx < num_classes; ++class_idx) {
-                    probabilities_ptr[class_idx] = (weight * probabilities_ptr[class_idx] +
-                                    input_probabilities_ptr[class_idx]) *
-                                   inv_wsum;
+                    for (index_t class_idx = 0; class_idx < num_classes; ++class_idx) {
+                        probabilities_ptr[class_idx] = (weight * probabilities_ptr[class_idx] +
+                                        input_probabilities_ptr[class_idx]) *
+                                    inv_wsum;
+                    }
                 }
             }
         }
@@ -1484,6 +1476,311 @@ void ExtractPointCloudCPU
     core::cuda::Synchronize();
 #endif
 }
+
+
+
+
+
+template <typename tsdf_t, typename weight_t, typename color_t>
+#if defined(__CUDACC__)
+void ExtractDetectionPointCloudCUDA
+#else
+void ExtractDetectionPointCloudCPU
+#endif
+        (
+         const int class_index,
+         const float minimum_probability,
+         const core::Tensor& indices,
+         const core::Tensor& nb_indices,
+         const core::Tensor& nb_masks,
+         const core::Tensor& block_keys,
+         const TensorMap& block_value_map,
+         core::Tensor& points,
+         core::Tensor& normals,
+         core::Tensor& colors,
+         core::Tensor& probabilities,
+         index_t resolution,
+         float voxel_size,
+         float weight_threshold,
+         int& valid_size) {
+    core::Device device = block_keys.GetDevice();
+
+    // Parameters
+    index_t resolution2 = resolution * resolution;
+    index_t resolution3 = resolution2 * resolution;
+
+    // Shape / transform indexers, no data involved
+    ArrayIndexer voxel_indexer({resolution, resolution, resolution});
+
+    // Real data indexer
+    ArrayIndexer block_keys_indexer(block_keys, 1);
+    ArrayIndexer nb_block_masks_indexer(nb_masks, 2);
+    ArrayIndexer nb_block_indices_indexer(nb_indices, 2);
+
+    // Plain arrays that does not require indexers
+    const index_t* indices_ptr = indices.GetDataPtr<index_t>();
+
+    if (!block_value_map.Contains("tsdf") ||
+        !block_value_map.Contains("weight")) {
+        utility::LogError(
+                "TSDF, weight and/or probabilities not allocated in blocks, please implement "
+                "customized integration.");
+    }
+    const tsdf_t* tsdf_base_ptr =
+            block_value_map.at("tsdf").GetDataPtr<tsdf_t>();
+    const weight_t* weight_base_ptr =
+            block_value_map.at("weight").GetDataPtr<weight_t>();
+    const color_t* color_base_ptr = nullptr;
+    if (block_value_map.Contains("color")) {
+        color_base_ptr = block_value_map.at("color").GetDataPtr<color_t>();
+    }
+    const float* probs_base_ptr = nullptr;
+    if (block_value_map.Contains("probabilities")) {
+        probs_base_ptr = block_value_map.at("probabilities").GetDataPtr<float>();
+    }
+
+    index_t n_blocks = indices.GetLength();
+    index_t n = n_blocks * resolution3;
+
+    // Output
+#if defined(__CUDACC__)
+    core::Tensor count(std::vector<index_t>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    index_t* count_ptr = count.GetDataPtr<index_t>();
+#else
+    std::atomic<index_t> count_atomic(0);
+    std::atomic<index_t>* count_ptr = &count_atomic;
+#endif
+    /* Getting the indics involved in the isosurface.
+     *
+     */
+    if (valid_size < 0) {
+        utility::LogDebug(
+                "No estimated max point cloud size provided, using a 2-pass "
+                "estimation. Surface extraction could be slow.");
+        // This pass determines valid number of points.
+
+        core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
+            auto GetLinearIdx = [&] OPEN3D_DEVICE(
+                                        index_t xo, index_t yo, index_t zo,
+                                        index_t curr_block_idx) -> index_t {
+                return DeviceGetLinearIdx(xo, yo, zo, curr_block_idx,
+                                          resolution, nb_block_masks_indexer,
+                                          nb_block_indices_indexer);
+            };
+
+            // Natural index (0, N) -> (block_idx,
+            // voxel_idx)
+            index_t workload_block_idx = workload_idx / resolution3;
+            index_t block_idx = indices_ptr[workload_block_idx];
+            index_t voxel_idx = workload_idx % resolution3;
+
+            // voxel_idx -> (x_voxel, y_voxel, z_voxel)
+            index_t xv, yv, zv;
+            voxel_indexer.WorkloadToCoord(voxel_idx, &xv, &yv, &zv);
+
+            index_t linear_idx = block_idx * resolution3 + voxel_idx;
+            float tsdf_o = tsdf_base_ptr[linear_idx];
+            float weight_o = weight_base_ptr[linear_idx];
+            if (weight_o <= weight_threshold) return;
+
+            // Enumerate x-y-z directions
+            for (index_t i = 0; i < 3; ++i) {
+                index_t linear_idx_i =
+                        GetLinearIdx(xv + (i == 0), yv + (i == 1),
+                                     zv + (i == 2), workload_block_idx);
+                if (linear_idx_i < 0) continue;
+
+                float tsdf_i = tsdf_base_ptr[linear_idx_i];
+                float weight_i = weight_base_ptr[linear_idx_i];
+                if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
+                    OPEN3D_ATOMIC_ADD(count_ptr, 1);
+                }
+            }
+        });
+
+#if defined(__CUDACC__)
+        valid_size = count[0].Item<index_t>();
+        count[0] = 0;
+#else
+        valid_size = (*count_ptr).load();
+        (*count_ptr) = 0;
+#endif
+    }
+
+    if (points.GetLength() == 0) {
+        points = core::Tensor({valid_size, 3}, core::Float32, device);
+    }
+    ArrayIndexer point_indexer(points, 1);
+
+    // Normals
+    ArrayIndexer normal_indexer;
+    normals = core::Tensor({valid_size, 3}, core::Float32, device);
+    normal_indexer = ArrayIndexer(normals, 1);
+
+    // This pass extracts exact surface points.
+
+    // Colors
+    ArrayIndexer color_indexer;
+    if (color_base_ptr) {
+        colors = core::Tensor({valid_size, 3}, core::Float32, device);
+        color_indexer = ArrayIndexer(colors, 1);
+    }
+
+
+    // Probabilites
+    ArrayIndexer probs_indexer;
+    if (probs_base_ptr) {
+        // TODO: the "1" in the line below should be "num_classes"
+        probabilities = core::Tensor({valid_size, 1}, core::Float32, device);
+        probs_indexer = ArrayIndexer(probabilities, 1);
+    }
+
+    core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
+        auto GetLinearIdx = [&] OPEN3D_DEVICE(
+                                    index_t xo, index_t yo, index_t zo,
+                                    index_t curr_block_idx) -> index_t {
+            return DeviceGetLinearIdx(xo, yo, zo, curr_block_idx, resolution,
+                                      nb_block_masks_indexer,
+                                      nb_block_indices_indexer);
+        };
+
+        auto GetNormal = [&] OPEN3D_DEVICE(index_t xo, index_t yo, index_t zo,
+                                           index_t curr_block_idx, float* n) {
+            return DeviceGetNormal<tsdf_t>(
+                    tsdf_base_ptr, xo, yo, zo, curr_block_idx, n, resolution,
+                    nb_block_masks_indexer, nb_block_indices_indexer);
+        };
+
+        // Natural index (0, N) -> (block_idx, voxel_idx)
+        index_t workload_block_idx = workload_idx / resolution3;
+        index_t block_idx = indices_ptr[workload_block_idx];
+        index_t voxel_idx = workload_idx % resolution3;
+
+        /// Coordinate transform
+        // block_idx -> (x_block, y_block, z_block)
+        index_t* block_key_ptr =
+                block_keys_indexer.GetDataPtr<index_t>(block_idx);
+        index_t xb = block_key_ptr[0];
+        index_t yb = block_key_ptr[1];
+        index_t zb = block_key_ptr[2];
+
+        // voxel_idx -> (x_voxel, y_voxel, z_voxel)
+        index_t xv, yv, zv;
+        voxel_indexer.WorkloadToCoord(voxel_idx, &xv, &yv, &zv);
+
+        index_t linear_idx = block_idx * resolution3 + voxel_idx;
+        float tsdf_o = tsdf_base_ptr[linear_idx];
+        float weight_o = weight_base_ptr[linear_idx];
+        if (weight_o <= weight_threshold) return;
+
+        float no[3] = {0}, ne[3] = {0};
+
+        // Get normal at origin
+        GetNormal(xv, yv, zv, workload_block_idx, no);
+
+        index_t x = xb * resolution + xv;
+        index_t y = yb * resolution + yv;
+        index_t z = zb * resolution + zv;
+
+        // Enumerate x-y-z axis
+        for (index_t i = 0; i < 3; ++i) {
+            index_t linear_idx_i =
+                    GetLinearIdx(xv + (i == 0), yv + (i == 1), zv + (i == 2),
+                                 workload_block_idx);
+            if (linear_idx_i < 0) continue;
+
+            float tsdf_i = tsdf_base_ptr[linear_idx_i];
+            float weight_i = weight_base_ptr[linear_idx_i];
+            if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
+                float ratio = (0 - tsdf_o) / (tsdf_i - tsdf_o);
+
+                index_t idx = OPEN3D_ATOMIC_ADD(count_ptr, 1);
+                if (idx >= valid_size) {
+                    printf("Point cloud size larger than "
+                           "estimated, please increase the "
+                           "estimation!\n");
+                    return;
+                }
+
+                if (probs_base_ptr) {
+                    float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
+                    // TODO: the "1" below line shall be "num_classes"
+                    const float* probs_o_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx;
+                    float p_o = probs_o_ptr[0];
+
+                    // TODO: the "1" below line shall be "num_classes"
+                    const float* probs_i_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx_i;
+                    float p_i = probs_i_ptr[0];
+
+                    probs_ptr[0] = ((1 - ratio) * p_o + ratio * p_i);
+                    if(probs_ptr[0] < minimum_probability){
+                        // discard points below threshold
+                        continue;
+                    }
+                }
+
+
+                float* point_ptr = point_indexer.GetDataPtr<float>(idx);
+                point_ptr[0] = voxel_size * (x + ratio * int(i == 0));
+                point_ptr[1] = voxel_size * (y + ratio * int(i == 1));
+                point_ptr[2] = voxel_size * (z + ratio * int(i == 2));
+
+                // Get normal at edge and interpolate
+                float* normal_ptr = normal_indexer.GetDataPtr<float>(idx);
+                GetNormal(xv + (i == 0), yv + (i == 1), zv + (i == 2),
+                          workload_block_idx, ne);
+                float nx = (1 - ratio) * no[0] + ratio * ne[0];
+                float ny = (1 - ratio) * no[1] + ratio * ne[1];
+                float nz = (1 - ratio) * no[2] + ratio * ne[2];
+                float norm = static_cast<float>(
+                        sqrt(nx * nx + ny * ny + nz * nz) + 1e-5);
+                normal_ptr[0] = nx / norm;
+                normal_ptr[1] = ny / norm;
+                normal_ptr[2] = nz / norm;
+
+                if (color_base_ptr) {
+                    float* color_ptr = color_indexer.GetDataPtr<float>(idx);
+                    const color_t* color_o_ptr =
+                            color_base_ptr + 3 * linear_idx;
+                    float r_o = color_o_ptr[0];
+                    float g_o = color_o_ptr[1];
+                    float b_o = color_o_ptr[2];
+
+                    const color_t* color_i_ptr =
+                            color_base_ptr + 3 * linear_idx_i;
+                    float r_i = color_i_ptr[0];
+                    float g_i = color_i_ptr[1];
+                    float b_i = color_i_ptr[2];
+
+                    color_ptr[0] = ((1 - ratio) * r_o + ratio * r_i) / 255.0f;
+                    color_ptr[1] = ((1 - ratio) * g_o + ratio * g_i) / 255.0f;
+                    color_ptr[2] = ((1 - ratio) * b_o + ratio * b_i) / 255.0f;
+                }
+
+
+            }
+        }
+    });
+
+#if defined(__CUDACC__)
+    index_t total_count = count.Item<index_t>();
+#else
+    index_t total_count = (*count_ptr).load();
+#endif
+
+    utility::LogDebug("{} vertices extracted", total_count);
+    valid_size = total_count;
+
+#if defined(BUILD_CUDA_MODULE) && defined(__CUDACC__)
+    core::cuda::Synchronize();
+#endif
+}
+
+
+
 
 template <typename tsdf_t, typename weight_t, typename color_t>
 #if defined(__CUDACC__)

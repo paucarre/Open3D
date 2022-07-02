@@ -138,6 +138,23 @@ void ExtractPointCloud(const core::Tensor& block_indices,
                        float weight_threshold,
                        index_t& valid_size);
 
+void ExtractDetectionPointCloud(
+                       const int class_index,
+                       const float minimum_probability,
+                       const core::Tensor& block_indices,
+                       const core::Tensor& nb_block_indices,
+                       const core::Tensor& nb_block_masks,
+                       const core::Tensor& block_keys,
+                       const TensorMap& block_value_map,
+                       core::Tensor& points,
+                       core::Tensor& normals,
+                       core::Tensor& colors,
+                       core::Tensor& probabilities,
+                       index_t block_resolution,
+                       float voxel_size,
+                       float weight_threshold,
+                       index_t& valid_size);
+
 void ExtractTriangleMesh(const core::Tensor& block_indices,
                          const core::Tensor& inv_block_indices,
                          const core::Tensor& nb_block_indices,
@@ -263,6 +280,25 @@ void ExtractPointCloudCPU(const core::Tensor& block_indices,
                           core::Tensor& points,
                           core::Tensor& normals,
                           core::Tensor& colors,
+                          index_t block_resolution,
+                          float voxel_size,
+                          float weight_threshold,
+                          index_t& valid_size);
+
+
+template <typename tsdf_t, typename weight_t, typename color_t>
+void ExtractDetectionPointCloudCPU(
+                          const int class_index,
+                          const float minimum_probability,
+                          const core::Tensor& block_indices,
+                          const core::Tensor& nb_block_indices,
+                          const core::Tensor& nb_block_masks,
+                          const core::Tensor& block_keys,
+                          const TensorMap& block_value_map,
+                          core::Tensor& points,
+                          core::Tensor& normals,
+                          core::Tensor& colors,
+                          core::Tensor& probabilities,
                           index_t block_resolution,
                           float voxel_size,
                           float weight_threshold,
@@ -396,6 +432,24 @@ void ExtractPointCloudCUDA(const core::Tensor& block_indices,
                            float voxel_size,
                            float weight_threshold,
                            index_t& valid_size);
+
+template <typename tsdf_t, typename weight_t, typename color_t>
+void ExtractDetectionPointCloudCUDA(
+                       const int class_index,
+                       const float minimum_probability,
+                       const core::Tensor& block_indices,
+                       const core::Tensor& nb_block_indices,
+                       const core::Tensor& nb_block_masks,
+                       const core::Tensor& block_keys,
+                       const TensorMap& block_value_map,
+                       core::Tensor& points,
+                       core::Tensor& normals,
+                       core::Tensor& colors,
+                       core::Tensor& probabilities,
+                       index_t block_resolution,
+                       float voxel_size,
+                       float weight_threshold,
+                       index_t& valid_size);
 
 template <typename tsdf_t, typename weight_t, typename color_t>
 void ExtractTriangleMeshCUDA(const core::Tensor& block_indices,

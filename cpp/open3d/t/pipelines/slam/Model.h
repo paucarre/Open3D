@@ -108,6 +108,20 @@ public:
     t::geometry::PointCloud ExtractPointCloud(float weight_threshold = 3.0f,
                                               int estimated_number = -1);
 
+
+    /// Extract surface point cloud for visualization / model saving.
+    /// \param weight_threshold Weight threshold of the TSDF voxels to prune
+    /// noise.
+    /// \param estimated_number Estimation of the point cloud size, helpful for
+    /// real-time visualization.
+    /// \param class_index Class index of the inference output
+    /// \param minimum_probability minimum probability to account for
+    /// \return Extracted point cloud.
+    t::geometry::PointCloud ExtractDetectionPointCloud(float weight_threshold = 3.0f,
+                                              int estimated_number = -1,
+                                              int class_index = 0,
+                                              float minimum_probability = 0.1);
+
     /// Extract surface triangle mesh for visualization / model saving.
     /// \param weight_threshold Weight threshold of the TSDF voxels to prune
     /// noise.

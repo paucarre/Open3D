@@ -472,6 +472,65 @@ void ExtractPointCloud(const core::Tensor& block_indices,
     }
 }
 
+void ExtractDetectionPointCloud(
+                       const int class_index,
+                       const float minimum_probability,
+                       const core::Tensor& block_indices,
+                       const core::Tensor& nb_block_indices,
+                       const core::Tensor& nb_block_masks,
+                       const core::Tensor& block_keys,
+                       const TensorMap& block_value_map,
+                       core::Tensor& points,
+                       core::Tensor& normals,
+                       core::Tensor& colors,
+                       core::Tensor& probabilities,
+                       index_t block_resolution,
+                       float voxel_size,
+                       float weight_threshold,
+                       index_t& valid_size) {
+    using tsdf_t = float;
+    core::Dtype block_weight_dtype = core::Dtype::Float32;
+    core::Dtype block_color_dtype = core::Dtype::Float32;
+    if (block_value_map.Contains("weight")) {
+        block_weight_dtype = block_value_map.at("weight").GetDtype();
+    }
+    if (block_value_map.Contains("color")) {
+        block_color_dtype = block_value_map.at("color").GetDtype();
+    }
+
+    if (block_indices.IsCPU()) {
+        DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
+                block_weight_dtype, block_color_dtype, [&] {
+                    ExtractDetectionPointCloudCPU<tsdf_t, weight_t, color_t>(
+                            class_index, minimum_probability,
+                            block_indices, nb_block_indices, nb_block_masks,
+                            block_keys, block_value_map, points, normals,
+                            colors, probabilities, block_resolution, voxel_size,
+                            weight_threshold, valid_size);
+                });
+
+    } else if (block_indices.IsCUDA()) {
+#ifdef BUILD_CUDA_MODULE
+        DISPATCH_VALUE_DTYPE_TO_TEMPLATE(
+                block_weight_dtype, block_color_dtype, [&] {
+                    ExtractDetectionPointCloudCUDA<tsdf_t, weight_t, color_t>(
+                            class_index, minimum_probability,
+                            block_indices, nb_block_indices, nb_block_masks,
+                            block_keys, block_value_map, points, normals,
+                            colors, probabilities, block_resolution, voxel_size,
+                            weight_threshold, valid_size);
+                });
+#else
+        utility::LogError("Not compiled with CUDA, but CUDA device is used.");
+#endif
+    } else {
+        utility::LogError("Unimplemented device");
+    }
+}
+
+
+
+
 void ExtractTriangleMesh(const core::Tensor& block_indices,
                          const core::Tensor& inv_block_indices,
                          const core::Tensor& nb_block_indices,
