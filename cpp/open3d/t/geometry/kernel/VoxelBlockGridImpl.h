@@ -340,9 +340,9 @@ void IntegrateCPU
          float depth_scale,
          float depth_max) {
 
-    int64_t num_classes = probabilities.GetShape()[2];
-    utility::LogInfo(
-                "NUM CLASSES {}", num_classes);
+    index_t num_classes = static_cast<index_t>(probabilities.GetShape()[2]);
+    //utility::LogInfo(
+    //            "NUM CLASSES {}", num_classes);
 
     // Parameters
     index_t resolution2 = resolution * resolution;
