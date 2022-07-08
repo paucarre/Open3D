@@ -59,6 +59,19 @@ void DepthTouch(std::shared_ptr<core::HashMap>& hashmap,
                 float depth_max,
                 index_t stride);
 
+void UnseenFrustumDeepTouch(std::shared_ptr<core::HashMap> &hashmap,
+                    const core::Tensor &depth,
+                    const core::Tensor &intrinsic,
+                    const core::Tensor &extrinsic,
+                    core::Tensor &voxel_block_coords,
+                    index_t voxel_grid_resolution,
+                    float voxel_size,
+                    float sdf_trunc,
+                    float depth_scale,
+                    float depth_max,
+                    index_t stride,
+                    float depth_std_times);
+
 void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                                             const core::Tensor& block_keys,
                                             core::Tensor& voxel_coords,
@@ -95,6 +108,14 @@ void Integrate(const core::Tensor& depth,
                 float sdf_trunc,
                 float depth_scale,
                 float depth_max);
+
+void DownIntegrate(
+               const core::Tensor& block_indices,
+               const core::Tensor& block_keys,
+               TensorMap& block_value_map,
+               index_t resolution,
+               float voxel_size);
+
 
 void EstimateRange(const core::Tensor& block_keys,
                    core::Tensor& range_minmax_map,
@@ -321,6 +342,7 @@ void ExtractTriangleMeshCPU(const core::Tensor& block_indices,
                             index_t& vertex_count);
 
 #ifdef BUILD_CUDA_MODULE
+
 void PointCloudTouchCUDA(std::shared_ptr<core::HashMap>& hashmap,
                          const core::Tensor& points,
                          core::Tensor& voxel_block_coords,
@@ -339,6 +361,19 @@ void DepthTouchCUDA(std::shared_ptr<core::HashMap>& hashmap,
                     float depth_scale,
                     float depth_max,
                     index_t stride);
+
+void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
+                    const core::Tensor &depth,
+                    const core::Tensor &intrinsic,
+                    const core::Tensor &extrinsic,
+                    core::Tensor &voxel_block_coords,
+                    index_t voxel_grid_resolution,
+                    float voxel_size,
+                    float sdf_trunc,
+                    float depth_scale,
+                    float depth_max,
+                    index_t stride,
+                    float depth_std_times);
 
 void GetVoxelCoordinatesAndFlattenedIndicesCUDA(const core::Tensor& buf_indices,
                                                 const core::Tensor& block_keys,
@@ -366,6 +401,14 @@ void IntegrateCUDA(const core::Tensor& depth,
                    float depth_scale,
                    float depth_max);
 
+template <typename tsdf_t,
+          typename weight_t>
+void DownIntegrateCUDA(
+               const core::Tensor& block_indices,
+               const core::Tensor& block_keys,
+               TensorMap& block_value_map,
+               index_t resolution,
+               float voxel_size);
 
 template <typename input_depth_t,
         typename input_color_t,

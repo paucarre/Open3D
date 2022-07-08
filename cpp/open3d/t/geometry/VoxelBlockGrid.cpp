@@ -263,6 +263,44 @@ core::Tensor VoxelBlockGrid::GetUniqueBlockCoordinates(
     return block_coords;
 }
 
+core::Tensor VoxelBlockGrid::UnseenFrustumGetUniqueBlockCoordinates(
+        const Image &depth,
+        const core::Tensor &intrinsic,
+        const core::Tensor &extrinsic,
+        float depth_scale,
+        float depth_max,
+        float trunc_voxel_multiplier,
+        float depth_std_times) {
+    AssertInitialized();
+    CheckDepthTensor(depth.AsTensor());
+    CheckIntrinsicTensor(intrinsic);
+    CheckExtrinsicTensor(extrinsic);
+
+    const int64_t down_factor = 4;
+    const int64_t est_sample_multiplier = 4;
+    if (frustum_hashmap_ == nullptr) {
+        int64_t capacity = (depth.GetCols() / down_factor) *
+                           (depth.GetRows() / down_factor) *
+                           est_sample_multiplier;
+        frustum_hashmap_ = std::make_shared<core::HashMap>(
+                capacity, core::Int32, core::SizeVector{3}, core::Int32,
+                core::SizeVector{1}, block_hashmap_->GetDevice());
+    } else {
+        frustum_hashmap_->Clear();
+    }
+
+    core::Tensor block_coords;
+    kernel::voxel_grid::UnseenFrustumDeepTouch(frustum_hashmap_, depth.AsTensor(),
+                                   intrinsic, extrinsic, block_coords,
+                                   block_resolution_, voxel_size_,
+                                   voxel_size_ * trunc_voxel_multiplier,
+                                   depth_scale, depth_max, down_factor,
+                                   depth_std_times);
+
+    return block_coords;
+}
+
+
 core::Tensor VoxelBlockGrid::GetUniqueBlockCoordinates(
         const PointCloud &pcd, float trunc_voxel_multiplier) {
     AssertInitialized();
@@ -343,6 +381,27 @@ void VoxelBlockGrid::Integrate(const core::Tensor &block_coords,
             block_resolution_, voxel_size_,
             voxel_size_ * trunc_voxel_multiplier, depth_scale, depth_max);
 }
+
+void VoxelBlockGrid::Erase(const core::Tensor &block_coords) {
+    AssertInitialized();
+    CheckBlockCoorinates(block_coords);
+    int64_t key_len = block_coords.GetLength();
+    if (key_len > 0) {
+        core::Tensor buf_indices, masks;
+        //TODO: probably no need to activate/create anything
+        block_hashmap_->Activate(block_coords, buf_indices, masks);
+        block_hashmap_->Find(block_coords, buf_indices, masks);
+        //block_hashmap_->Erase(block_coords);
+        core::Tensor block_keys = block_hashmap_->GetKeyTensor();
+        TensorMap block_value_map =
+            ConstructTensorMap(*block_hashmap_, name_attr_map_);
+        kernel::voxel_grid::DownIntegrate( buf_indices, block_keys,
+            block_value_map,
+            block_resolution_, voxel_size_);
+            //voxel_size_ * trunc_voxel_multiplier);
+    }
+}
+
 
 TensorMap VoxelBlockGrid::RayCast(const core::Tensor &block_coords,
                                   const core::Tensor &intrinsic,

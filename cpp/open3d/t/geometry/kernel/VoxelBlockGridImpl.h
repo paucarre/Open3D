@@ -155,6 +155,109 @@ inline OPEN3D_DEVICE void DeviceGetNormal(
     if (vzp >= 0 && vzn >= 0) n[2] = tsdf_base_ptr[vzp] - tsdf_base_ptr[vzn];
 };
 
+template <typename tsdf_t,
+          typename weight_t>
+void DownIntegrateCUDA(const core::Tensor& block_indices,
+               const core::Tensor& block_keys,
+               TensorMap& block_value_map,
+               index_t resolution,
+               float voxel_size) {
+    // Parameters
+    index_t resolution2 = resolution * resolution;
+    index_t resolution3 = resolution2 * resolution;
+
+    //TransformIndexer transform_indexer(depth_intrinsic, extrinsics, voxel_size);
+
+    ArrayIndexer voxel_indexer({resolution, resolution, resolution});
+
+    ArrayIndexer block_keys_indexer(block_keys, 1);
+    //ArrayIndexer depth_indexer(depth, 2);
+    core::Device device = block_keys.GetDevice();
+
+    const index_t* indices_ptr = block_indices.GetDataPtr<index_t>();
+    /*
+    if (!block_value_map.Contains("tsdf") ||
+        !block_value_map.Contains("weight")) {
+        utility::LogError(
+                "TSDF and/or weight not allocated in blocks, please implement "
+                "customized integration.");
+    }
+    tsdf_t* tsdf_base_ptr = block_value_map.at("tsdf").GetDataPtr<tsdf_t>();
+    */
+    weight_t* weight_base_ptr =
+            block_value_map.at("weight").GetDataPtr<weight_t>();
+
+
+    index_t n = block_indices.GetLength() * resolution3;
+    core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
+        // Natural index (0, N) -> (block_idx, voxel_idx)
+        index_t block_idx = indices_ptr[workload_idx / resolution3];
+        index_t voxel_idx = workload_idx % resolution3;
+
+        /// Coordinate transform
+        // block_idx -> (x_block, y_block, z_block)
+        //index_t* block_key_ptr =
+        //        block_keys_indexer.GetDataPtr<index_t>(block_idx);
+        //index_t xb = block_key_ptr[0];
+        //index_t yb = block_key_ptr[1];
+        //index_t zb = block_key_ptr[2];
+
+        // voxel_idx -> (x_voxel, y_voxel, z_voxel)
+        index_t xv, yv, zv;
+        voxel_indexer.WorkloadToCoord(voxel_idx, &xv, &yv, &zv);
+
+        // coordinate in world (in voxel)
+        //index_t x = xb * resolution + xv;
+        //index_t y = yb * resolution + yv;
+        //index_t z = zb * resolution + zv;
+
+        // coordinate in camera (in voxel -> in meter)
+        //float xc, yc, zc, u, v;
+        //transform_indexer.RigidTransform(static_cast<float>(x),
+                                         //static_cast<float>(y),
+                                         //static_cast<float>(z), &xc, &yc, &zc);
+
+        // coordinate in image (in pixel)
+        //transform_indexer.Project(xc, yc, zc, &u, &v);
+        //if (!depth_indexer.InBoundary(u, v)) {
+        //    return;
+        //}
+
+        //index_t ui = static_cast<index_t>(u);
+        //index_t vi = static_cast<index_t>(v);
+
+        // Associate image workload and compute SDF and
+        // TSDF.
+        /*
+        float depth =
+                *depth_indexer.GetDataPtr<input_depth_t>(ui, vi) / depth_scale;
+
+        float sdf = depth - zc;
+        if (depth <= 0 || depth > depth_max || zc <= 0 || sdf < -sdf_trunc) {
+            return;
+        }
+        sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
+        sdf /= sdf_trunc;
+
+
+        tsdf_t* tsdf_ptr = tsdf_base_ptr + linear_idx;
+
+
+        float inv_wsum = 1.0f / (*weight_ptr + 1);
+
+        *tsdf_ptr = (weight * (*tsdf_ptr) + sdf) * inv_wsum;
+        */
+        index_t linear_idx = block_idx * resolution3 + voxel_idx;
+        weight_t* weight_ptr = weight_base_ptr + linear_idx;
+        float weight = *weight_ptr;
+        if(weight > 0) {
+            *weight_ptr = weight - 1;
+        }
+    });
+
+core::cuda::Synchronize();
+}
+
 template <typename input_depth_t,
           typename input_color_t,
           typename tsdf_t,

@@ -135,6 +135,15 @@ public:
                                            float depth_max = 3.0f,
                                            float trunc_voxel_multiplier = 8.0);
 
+    core::Tensor UnseenFrustumGetUniqueBlockCoordinates(
+            const Image &depth,
+            const core::Tensor &intrinsic,
+            const core::Tensor &extrinsic,
+            float depth_scale,
+            float depth_max,
+            float trunc_voxel_multiplier,
+            float depth_std_times);
+
     /// Obtain active block coordinates from a point cloud.
     core::Tensor GetUniqueBlockCoordinates(const PointCloud &pcd,
                                            float trunc_voxel_multiplier = 8.0);
@@ -210,6 +219,7 @@ public:
                    float depth_max = 3.0f,
                    float trunc_voxel_multiplier = 8.0f);
 
+    void Erase(const core::Tensor &block_coords);
 
     /// Specific operation for TSDF volumes.
     /// Perform volumetric ray casting in the selected block coordinates.
@@ -280,6 +290,8 @@ private:
     std::shared_ptr<core::HashMap> block_hashmap_;
 
     // Local hash map: 3D coords -> indices in block_hashmap_.
+    // This seems to be stateful and change at each call
+    // of integration
     std::shared_ptr<core::HashMap> frustum_hashmap_;
 
     // Map: attribute name -> index to access the attribute in SoA.

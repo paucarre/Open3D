@@ -56,7 +56,11 @@ void PointCloudTouch(std::shared_ptr<core::HashMap>& hashmap,
         utility::LogError("Unimplemented device");
     }
 }
-
+/*
+ * This seems to return some sort of coordinate index
+ * that is related to the depth
+ *
+ */
 void DepthTouch(std::shared_ptr<core::HashMap>& hashmap,
                 const core::Tensor& depth,
                 const core::Tensor& intrinsic,
@@ -80,6 +84,33 @@ void DepthTouch(std::shared_ptr<core::HashMap>& hashmap,
         utility::LogError("Unimplemented device");
     }
 }
+
+void UnseenFrustumDeepTouch(std::shared_ptr<core::HashMap> &hashmap,
+                    const core::Tensor &depth,
+                    const core::Tensor &intrinsic,
+                    const core::Tensor &extrinsic,
+                    core::Tensor &voxel_block_coords,
+                    index_t voxel_grid_resolution,
+                    float voxel_size,
+                    float sdf_trunc,
+                    float depth_scale,
+                    float depth_max,
+                    index_t stride,
+                    float depth_std_times)  {
+    //if (hashmap->IsCPU()) {
+    //    DepthTouchCPU(hashmap, depth, intrinsic, extrinsic, voxel_block_coords,
+    //                  voxel_grid_resolution, voxel_size, sdf_trunc, depth_scale,
+    //                  depth_max, stride);
+    //} else if (hashmap->IsCUDA()) {
+    CUDA_CALL(UnseenFrustumDeepTouchCUDA, hashmap, depth, intrinsic, extrinsic,
+                voxel_block_coords, voxel_grid_resolution, voxel_size,
+                sdf_trunc, depth_scale, depth_max, stride, depth_std_times);
+    //} else {
+    //    utility::LogError("Unimplemented device");
+    //}
+}
+
+
 
 void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                                             const core::Tensor& block_keys,
@@ -120,6 +151,7 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                     WEIGHT_DTYPE.ToString(), COLOR_DTYPE.ToString());       \
         }                                                                   \
     }()
+
 
 #define DISPATCH_INPUT_DTYPE_TO_TEMPLATE(DEPTH_DTYPE, COLOR_DTYPE, ...)        \
     [&] {                                                                      \
@@ -164,6 +196,23 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                     "(float, float) or (uint16, uint16), but received ({} " \
                     "{}).",                                                 \
                     WEIGHT_DTYPE.ToString(), COLOR_DTYPE.ToString());       \
+        }                                                                   \
+    }()
+
+#define DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT(WEIGHT_DTYPE,  ...)       \
+    [&] {                                                                   \
+        if (WEIGHT_DTYPE == open3d::core::Float32) {                        \
+            using weight_t = float;                                         \
+            return __VA_ARGS__();                                           \
+        } else if (WEIGHT_DTYPE == open3d::core::UInt16) {                  \
+            using weight_t = uint16_t;                                      \
+            return __VA_ARGS__();                                           \
+        } else {                                                            \
+            utility::LogError(                                              \
+                    "Unsupported value data type combination. Expected "    \
+                    "(float) or (uint16), but received ({} "                \
+                    "{}).",                                                 \
+                    WEIGHT_DTYPE.ToString());                               \
         }                                                                   \
     }()
 
@@ -332,6 +381,29 @@ void Integrate(const core::Tensor& depth,
     } else {
         utility::LogError("Unimplemented device");
     }
+}
+
+
+void DownIntegrate(
+               const core::Tensor& block_indices,
+               const core::Tensor& block_keys,
+               TensorMap& block_value_map,
+               index_t resolution,
+               float voxel_size) {
+    using tsdf_t = float;
+    core::Dtype block_weight_dtype = core::Dtype::Float32;
+    if (block_value_map.Contains("weight")) {
+        block_weight_dtype = block_value_map.at("weight").GetDtype();
+    }
+    #ifdef BUILD_CUDA_MODULE
+        DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT(
+                block_weight_dtype, [&] {
+                    DownIntegrateCUDA<tsdf_t, weight_t>(
+                            block_indices, block_keys,
+                            block_value_map, resolution,
+                            voxel_size);
+                });
+    #endif
 }
 
 void EstimateRange(const core::Tensor& block_keys,

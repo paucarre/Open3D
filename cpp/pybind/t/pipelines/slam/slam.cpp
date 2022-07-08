@@ -127,6 +127,16 @@ void pybind_slam_model(py::module &m) {
     docstring::ClassMethodDocInject(m, "Model", "extract_detection_pointcloud",
                                     map_shared_argument_docstrings);
 
+
+    model.def("erase", &Model::Erase,
+              py::call_guard<py::gil_scoped_release>(),
+              "Remove data from frustum volume.", "input_frame"_a,
+              "depth_scale"_a = 1000.0, "depth_max"_a = 3.0,
+              "trunc_voxel_multiplier"_a = 8.0,
+              "depth_std_times"_a = 6.0);
+    docstring::ClassMethodDocInject(m, "Model", "erase",
+                                    map_shared_argument_docstrings);
+
     model.def("extract_trianglemesh", &Model::ExtractTriangleMesh,
               py::call_guard<py::gil_scoped_release>(),
               "Extract triangle mesh from the volumetric model.",

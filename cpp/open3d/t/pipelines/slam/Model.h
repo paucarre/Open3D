@@ -131,6 +131,14 @@ public:
     t::geometry::TriangleMesh ExtractTriangleMesh(float weight_threshold = 3.0f,
                                                   int estimated_number = -1);
 
+
+
+    void Erase(const Frame& input_frame,
+                      float depth_scale,
+                      float depth_max,
+                      float trunc_voxel_multiplier,
+                      float depth_std_times);
+
     /// Get block hashmap int the VoxelBlockGrid.
     core::HashMap GetHashMap();
 
