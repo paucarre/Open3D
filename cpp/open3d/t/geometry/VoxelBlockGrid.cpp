@@ -382,7 +382,16 @@ void VoxelBlockGrid::Integrate(const core::Tensor &block_coords,
             voxel_size_ * trunc_voxel_multiplier, depth_scale, depth_max);
 }
 
-void VoxelBlockGrid::Erase(const core::Tensor &block_coords) {
+void VoxelBlockGrid::DownIntegrate(
+    const core::Tensor& block_coords,
+    const Image& depth,
+    const core::Tensor& depth_intrinsic,
+    const core::Tensor& extrinsics,
+    float sdf_trunc,
+    float depth_scale,
+    float depth_max,
+    float down_integration_multiplier
+    ) {
     AssertInitialized();
     CheckBlockCoorinates(block_coords);
     int64_t key_len = block_coords.GetLength();
@@ -395,9 +404,19 @@ void VoxelBlockGrid::Erase(const core::Tensor &block_coords) {
         core::Tensor block_keys = block_hashmap_->GetKeyTensor();
         TensorMap block_value_map =
             ConstructTensorMap(*block_hashmap_, name_attr_map_);
-        kernel::voxel_grid::DownIntegrate( buf_indices, block_keys,
+        kernel::voxel_grid::DownIntegrate(
+            depth.AsTensor(),
+            buf_indices,
+            block_keys,
             block_value_map,
-            block_resolution_, voxel_size_);
+            depth_intrinsic,
+            extrinsics,
+            block_resolution_,
+            voxel_size_,
+            sdf_trunc,
+            depth_scale,
+            depth_max,
+            down_integration_multiplier);
             //voxel_size_ * trunc_voxel_multiplier);
     }
 }

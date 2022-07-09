@@ -219,7 +219,14 @@ public:
                    float depth_max = 3.0f,
                    float trunc_voxel_multiplier = 8.0f);
 
-    void Erase(const core::Tensor &block_coords);
+    void DownIntegrate(const core::Tensor &block_coords,
+        const Image& depth,
+        const core::Tensor& depth_intrinsic,
+        const core::Tensor& extrinsics,
+        float sdf_trunc,
+        float depth_scale,
+        float depth_max,
+        float down_integration_multiplier);
 
     /// Specific operation for TSDF volumes.
     /// Perform volumetric ray casting in the selected block coordinates.

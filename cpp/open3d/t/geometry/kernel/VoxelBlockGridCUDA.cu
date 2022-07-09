@@ -405,18 +405,58 @@ template void IntegrateCUDA<float, float, float, float, float>(FN_ARGUMENTS);
 
 #define FN_DOWN_INTEGRATE
 
-template void DownIntegrateCUDA<float,  float>(
-               const core::Tensor& block_indices,
-               const core::Tensor& block_keys,
-               TensorMap& block_value_map,
-               index_t resolution,
-               float voxel_size);
-template void DownIntegrateCUDA<float,  uint16_t>(
-               const core::Tensor& block_indices,
-               const core::Tensor& block_keys,
-               TensorMap& block_value_map,
-               index_t resolution,
-               float voxel_size);
+template void DownIntegrateCUDA<float, float,  float>(
+               const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier);
+template void DownIntegrateCUDA<float, float,  uint16_t>(
+               const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier);
+template void DownIntegrateCUDA<uint16_t, float,  float>(
+               const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier);
+template void DownIntegrateCUDA<uint16_t, float,  uint16_t>(
+               const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier);
 #undef FN_DOWN_INTEGRATE
 
 #define FN_ARGUMENTS_PROBS                                                                    \

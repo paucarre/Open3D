@@ -123,15 +123,23 @@ void Model::Erase(const Frame& input_frame,
                       float depth_scale,
                       float depth_max,
                       float trunc_voxel_multiplier,
-                      float depth_std_times) {
+                      float depth_std_multiplier,
+                      float down_integration_multiplier) {
     t::geometry::Image depth = input_frame.GetDataAsImage("depth");
     core::Tensor intrinsic = input_frame.GetIntrinsics();
     core::Tensor extrinsic =
             t::geometry::InverseTransformation(GetCurrentFramePose());
     frustum_block_coords_ = voxel_grid_.UnseenFrustumGetUniqueBlockCoordinates(
             depth, intrinsic, extrinsic, depth_scale, depth_max,
-            trunc_voxel_multiplier, depth_std_times);
-    voxel_grid_.Erase(frustum_block_coords_);
+            trunc_voxel_multiplier, depth_std_multiplier);
+    voxel_grid_.DownIntegrate(frustum_block_coords_,
+                              depth,
+                              intrinsic,
+                              extrinsic,
+                              depth_scale,
+                              depth_max,
+                              trunc_voxel_multiplier,
+                              down_integration_multiplier);
 }
 
 t::geometry::PointCloud Model::ExtractPointCloud(float weight_threshold,

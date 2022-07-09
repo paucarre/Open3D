@@ -133,7 +133,8 @@ void pybind_slam_model(py::module &m) {
               "Remove data from frustum volume.", "input_frame"_a,
               "depth_scale"_a = 1000.0, "depth_max"_a = 3.0,
               "trunc_voxel_multiplier"_a = 8.0,
-              "depth_std_times"_a = 6.0);
+              "depth_std_times"_a = 6.0,
+              "down_integration_multiplier"_a = 1.0);
     docstring::ClassMethodDocInject(m, "Model", "erase",
                                     map_shared_argument_docstrings);
 

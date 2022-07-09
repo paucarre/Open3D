@@ -199,21 +199,25 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
         }                                                                   \
     }()
 
-#define DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT(WEIGHT_DTYPE,  ...)       \
-    [&] {                                                                   \
-        if (WEIGHT_DTYPE == open3d::core::Float32) {                        \
-            using weight_t = float;                                         \
-            return __VA_ARGS__();                                           \
-        } else if (WEIGHT_DTYPE == open3d::core::UInt16) {                  \
-            using weight_t = uint16_t;                                      \
-            return __VA_ARGS__();                                           \
-        } else {                                                            \
-            utility::LogError(                                              \
-                    "Unsupported value data type combination. Expected "    \
-                    "(float) or (uint16), but received ({} "                \
-                    "{}).",                                                 \
-                    WEIGHT_DTYPE.ToString());                               \
-        }                                                                   \
+#define DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT(DEPTH_DTYPE, WEIGHT_DTYPE,  ...)   \
+    [&] {                                                                            \
+        if (WEIGHT_DTYPE == open3d::core::Float32 &&                                 \
+            DEPTH_DTYPE == open3d::core::Float32) {                                  \
+            using weight_t = float;                                                  \
+            using input_depth_t = float;                                             \
+            return __VA_ARGS__();                                                    \
+        } else if (WEIGHT_DTYPE == open3d::core::UInt16 &&                           \
+                   DEPTH_DTYPE == open3d::core::UInt16) {                            \
+            using weight_t = uint16_t;                                               \
+            using input_depth_t = uint16_t;                                          \
+            return __VA_ARGS__();                                                    \
+        } else {                                                                     \
+            utility::LogError(                                                       \
+                    "Unsupported weight value data type combination. Expected "      \
+                    "(float, float) or (uint16, uint16), but received ({} "          \
+                    "{}, {}).",                                                      \
+                    WEIGHT_DTYPE.ToString(), DEPTH_DTYPE.ToString());                \
+        }                                                                            \
     }()
 
 #define DISPATCH_INPUT_DTYPE_TO_TEMPLATE_PROB(DEPTH_DTYPE, COLOR_DTYPE, PROBABILITY_DTYPE, ...)        \
@@ -385,23 +389,40 @@ void Integrate(const core::Tensor& depth,
 
 
 void DownIntegrate(
-               const core::Tensor& block_indices,
-               const core::Tensor& block_keys,
-               TensorMap& block_value_map,
-               index_t resolution,
-               float voxel_size) {
+         const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier) {
     using tsdf_t = float;
     core::Dtype block_weight_dtype = core::Dtype::Float32;
     if (block_value_map.Contains("weight")) {
         block_weight_dtype = block_value_map.at("weight").GetDtype();
     }
+    core::Dtype input_depth_dtype = depth.GetDtype();
     #ifdef BUILD_CUDA_MODULE
         DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT(
-                block_weight_dtype, [&] {
-                    DownIntegrateCUDA<tsdf_t, weight_t>(
-                            block_indices, block_keys,
-                            block_value_map, resolution,
-                            voxel_size);
+                input_depth_dtype, block_weight_dtype, [&] {
+                    DownIntegrateCUDA<input_depth_t, tsdf_t, weight_t>(
+                            depth,
+                            block_indices,
+                            block_keys,
+                            block_value_map,
+                            depth_intrinsic,
+                            extrinsics,
+                            resolution,
+                            voxel_size,
+                            sdf_trunc,
+                            depth_scale,
+                            depth_max,
+                            down_integration_multiplier);
                 });
     #endif
 }

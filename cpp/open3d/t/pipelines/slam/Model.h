@@ -137,7 +137,8 @@ public:
                       float depth_scale,
                       float depth_max,
                       float trunc_voxel_multiplier,
-                      float depth_std_times);
+                      float depth_std_times,
+                      float down_integration_multiplier);
 
     /// Get block hashmap int the VoxelBlockGrid.
     core::HashMap GetHashMap();

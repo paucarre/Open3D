@@ -110,11 +110,18 @@ void Integrate(const core::Tensor& depth,
                 float depth_max);
 
 void DownIntegrate(
-               const core::Tensor& block_indices,
-               const core::Tensor& block_keys,
-               TensorMap& block_value_map,
-               index_t resolution,
-               float voxel_size);
+         const core::Tensor& depth,
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         const core::Tensor& depth_intrinsic,
+         const core::Tensor& extrinsics,
+         index_t resolution,
+         float voxel_size,
+         float sdf_trunc,
+         float depth_scale,
+         float depth_max,
+         float down_integration_multiplier);
 
 
 void EstimateRange(const core::Tensor& block_keys,
@@ -401,14 +408,22 @@ void IntegrateCUDA(const core::Tensor& depth,
                    float depth_scale,
                    float depth_max);
 
-template <typename tsdf_t,
+template <typename input_depth_t,
+          typename tsdf_t,
           typename weight_t>
 void DownIntegrateCUDA(
-               const core::Tensor& block_indices,
-               const core::Tensor& block_keys,
-               TensorMap& block_value_map,
-               index_t resolution,
-               float voxel_size);
+               const core::Tensor& depth,
+                const core::Tensor& block_indices,
+                const core::Tensor& block_keys,
+                TensorMap& block_value_map,
+                const core::Tensor& depth_intrinsic,
+                const core::Tensor& extrinsics,
+                index_t resolution,
+                float voxel_size,
+                float sdf_trunc,
+                float depth_scale,
+                float depth_max,
+                float down_integration_multiplier);
 
 template <typename input_depth_t,
         typename input_color_t,
