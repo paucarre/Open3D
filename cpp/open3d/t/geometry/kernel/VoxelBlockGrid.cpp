@@ -143,6 +143,11 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
             using weight_t = uint16_t;                                      \
             using color_t = uint16_t;                                       \
             return __VA_ARGS__();                                           \
+        } else if (WEIGHT_DTYPE == open3d::core::Float32 &&                 \
+                   COLOR_DTYPE == open3d::core::UInt16) {                   \
+            using weight_t = float;                                         \
+            using color_t = uint16_t;                                       \
+            return __VA_ARGS__();                                           \
         } else {                                                            \
             utility::LogError(                                              \
                     "Unsupported value data type combination. Expected "    \
@@ -190,6 +195,13 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
             using color_t = uint16_t;                                       \
             using probability_t = float;                                    \
             return __VA_ARGS__();                                           \
+        } else if (WEIGHT_DTYPE == open3d::core::Float32 &&                 \
+                   COLOR_DTYPE == open3d::core::UInt16 &&                   \
+                   PROBABILITY_TYPE == open3d::core::Float32) {             \
+            using weight_t = float;                                      \
+            using color_t = uint16_t;                                       \
+            using probability_t = float;                                    \
+            return __VA_ARGS__();                                           \
         } else {                                                            \
             utility::LogError(                                              \
                     "Unsupported value data type combination. Expected "    \
@@ -211,11 +223,16 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
             using weight_t = uint16_t;                                               \
             using input_depth_t = uint16_t;                                          \
             return __VA_ARGS__();                                                    \
+        } else if (WEIGHT_DTYPE == open3d::core::Float32 &&                          \
+                   DEPTH_DTYPE == open3d::core::UInt16) {                            \
+            using weight_t = float;                                                  \
+            using input_depth_t = uint16_t;                                          \
+            return __VA_ARGS__();                                                    \
         } else {                                                                     \
             utility::LogError(                                                       \
                     "Unsupported weight value data type combination. Expected "      \
                     "(float, float) or (uint16, uint16), but received ({} "          \
-                    "{}, {}).",                                                      \
+                    "{}).",                                                          \
                     WEIGHT_DTYPE.ToString(), DEPTH_DTYPE.ToString());                \
         }                                                                            \
     }()

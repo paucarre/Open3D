@@ -194,6 +194,11 @@ void DownIntegrateCUDA(const core::Tensor& depth,
     }
     tsdf_t* tsdf_base_ptr = block_value_map.at("tsdf").GetDataPtr<tsdf_t>();
     */
+    if (!block_value_map.Contains("weight")) {
+        utility::LogError(
+                "Weight not allocated in blocks, please implement "
+                "customized integration.");
+    }
     weight_t* weight_base_ptr =
             block_value_map.at("weight").GetDataPtr<weight_t>();
 
@@ -242,9 +247,10 @@ void DownIntegrateCUDA(const core::Tensor& depth,
                 *depth_indexer.GetDataPtr<input_depth_t>(ui, vi) / depth_scale;
 
         //float sdf = depth - zc;
-        //if (depth <= 0 || depth > depth_max || zc <= 0 || sdf < -sdf_trunc) {
-        //    return;
-        //}
+        if (depth <= 0 || depth > depth_max || zc <= 0) {
+            return;
+        }
+
         //sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
         //sdf /= sdf_trunc;
         //tsdf_t* tsdf_ptr = tsdf_base_ptr + linear_idx;
@@ -253,16 +259,16 @@ void DownIntegrateCUDA(const core::Tensor& depth,
 
         index_t linear_idx = block_idx * resolution3 + voxel_idx;
         weight_t* weight_ptr = weight_base_ptr + linear_idx;
-        float weight = *weight_ptr;
+        weight_t weight = *weight_ptr;
         float distance = depth - zc; // the larger the distance the more likely there is nothing (W := 0)
         if(weight > 0) {
             /*
             From page 10 of https://docs.rs-online.com/f31c/A700000006942953.pdf
             Accuracy at distance:
-                    < 5mm @ 1m
+                    <  5mm @ 1m
                     < 14mm @ 9m
             Standard deviation at distance:
-                    2.5mm @ 1m
+                     2.5mm @ 1m
                     15.5mm @ 9m
             let's assume a linear interpolation works
             */
@@ -270,13 +276,12 @@ void DownIntegrateCUDA(const core::Tensor& depth,
             float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - depth) ) + ( (15.5 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
             float worst_case_deviation_m = accuracy_m + standard_deviation_m;
             float exponent = -0.5 * (distance * distance) / ( worst_case_deviation_m / 6.0); // assuming six-sigma
-            //const float t_max = max(0.0, min(depth - sdf_trunc - (depth_std_times * standard_deviation_m) - accuracy_m, depth_max));
-            //const float t_step = (t_max - t_min) / step_size;
-            *weight_ptr = weight * exp(down_integration_multiplier * exponent);
+            *weight_ptr = static_cast<weight_t>(weight * exp(down_integration_multiplier * exponent));
         }
     });
-
-core::cuda::Synchronize();
+#if defined(__CUDACC__)
+    core::cuda::Synchronize();
+#endif
 }
 
 template <typename input_depth_t,
@@ -428,7 +433,10 @@ void IntegrateCPU
                 }
             }
         }
-        *weight_ptr = weight + 1;
+        // Using simplified version of:
+        // https://arxiv.org/pdf/1611.03631.pdf
+        weight_t quadratic = static_cast<weight_t>(std::min(1.0, (1.0 / (depth * depth))));
+        *weight_ptr = weight + quadratic;
     });
 
 #if defined(__CUDACC__)

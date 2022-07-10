@@ -47,7 +47,7 @@ Model::Model(float voxel_size,
              const core::Device& device)
     : voxel_grid_(std::vector<std::string>({"tsdf", "weight", "color", "probabilities"}),
                   std::vector<core::Dtype>(
-                          {core::Float32, core::UInt16, core::UInt16, core::Float32}),
+                          {core::Float32, core::Float32, core::UInt16, core::Float32}),
                   std::vector<core::SizeVector>({{1}, {1}, {3}, {classes}}),
                   voxel_size,
                   block_resolution,

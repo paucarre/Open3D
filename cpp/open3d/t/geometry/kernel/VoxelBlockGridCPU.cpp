@@ -235,6 +235,9 @@ template void IntegrateCPU<uint16_t, uint8_t, float, float, float>(
 template void IntegrateCPU<float, float, float, uint16_t, uint16_t>(
         FN_ARGUMENTS);
 template void IntegrateCPU<float, float, float, float, float>(FN_ARGUMENTS);
+template void IntegrateCPU<uint16_t, uint8_t, float, float, uint16_t>(
+        FN_ARGUMENTS);
+template void IntegrateCPU<float, float, float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -255,6 +258,9 @@ template void IntegrateCPU<uint16_t, uint8_t, float, float, float, float, float>
 template void IntegrateCPU<float, float, float, float, uint16_t, uint16_t, float>(
         FN_ARGUMENTS_PROBS);
 template void IntegrateCPU<float, float, float, float, float, float, float>(FN_ARGUMENTS_PROBS);
+template void IntegrateCPU<uint16_t, uint8_t, float, float, float, uint16_t, float>(
+        FN_ARGUMENTS_PROBS);
+template void IntegrateCPU<float, float, float, float, float, uint16_t, float>(FN_ARGUMENTS_PROBS);
 
 #undef FN_ARGUMENTS_PROBS
 
@@ -270,6 +276,7 @@ template void IntegrateCPU<float, float, float, float, float, float, float>(FN_A
 
 template void RayCastCPU<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void RayCastCPU<float, float, float>(FN_ARGUMENTS);
+template void RayCastCPU<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -283,6 +290,7 @@ template void RayCastCPU<float, float, float>(FN_ARGUMENTS);
 
 template void ExtractPointCloudCPU<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractPointCloudCPU<float, float, float>(FN_ARGUMENTS);
+template void ExtractPointCloudCPU<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -298,6 +306,7 @@ template void ExtractPointCloudCPU<float, float, float>(FN_ARGUMENTS);
 
 template void ExtractDetectionPointCloudCPU<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractDetectionPointCloudCPU<float, float, float>(FN_ARGUMENTS);
+template void ExtractDetectionPointCloudCPU<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -313,6 +322,7 @@ template void ExtractDetectionPointCloudCPU<float, float, float>(FN_ARGUMENTS);
 
 template void ExtractTriangleMeshCPU<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractTriangleMeshCPU<float, float, float>(FN_ARGUMENTS);
+template void ExtractTriangleMeshCPU<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 

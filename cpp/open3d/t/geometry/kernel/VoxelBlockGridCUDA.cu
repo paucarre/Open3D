@@ -400,6 +400,12 @@ template void IntegrateCUDA<uint16_t, uint8_t, float, float, float>(
 template void IntegrateCUDA<float, float, float, uint16_t, uint16_t>(
         FN_ARGUMENTS);
 template void IntegrateCUDA<float, float, float, float, float>(FN_ARGUMENTS);
+template void IntegrateCUDA<uint16_t, uint8_t, float, float, uint16_t>(
+        FN_ARGUMENTS);
+template void IntegrateCUDA<float, float, float, float, uint16_t>(FN_ARGUMENTS);
+
+
+
 
 #undef FN_ARGUMENTS
 
@@ -475,6 +481,9 @@ template void IntegrateCUDA<uint16_t, uint8_t, float, float, float, float, float
 template void IntegrateCUDA<float, float, float, float, uint16_t, uint16_t, float>(
         FN_ARGUMENTS_PROBS);
 template void IntegrateCUDA<float, float, float, float, float, float, float>(FN_ARGUMENTS_PROBS);
+template void IntegrateCUDA<uint16_t, uint8_t, float, float, float, uint16_t, float>(
+        FN_ARGUMENTS_PROBS);
+template void IntegrateCUDA<float, float, float, float, float, uint16_t, float>(FN_ARGUMENTS_PROBS);
 
 #undef FN_ARGUMENTS_PROBS
 
@@ -490,6 +499,7 @@ template void IntegrateCUDA<float, float, float, float, float, float, float>(FN_
 
 template void RayCastCUDA<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void RayCastCUDA<float, float, float>(FN_ARGUMENTS);
+template void RayCastCUDA<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -503,6 +513,7 @@ template void RayCastCUDA<float, float, float>(FN_ARGUMENTS);
 
 template void ExtractPointCloudCUDA<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractPointCloudCUDA<float, float, float>(FN_ARGUMENTS);
+template void ExtractPointCloudCUDA<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -518,6 +529,7 @@ template void ExtractPointCloudCUDA<float, float, float>(FN_ARGUMENTS);
 
 template void ExtractDetectionPointCloudCUDA<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractDetectionPointCloudCUDA<float, float, float>(FN_ARGUMENTS);
+template void ExtractDetectionPointCloudCUDA<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
@@ -549,6 +561,7 @@ void ExtractTriangleMeshCUDA(const core::Tensor &block_indices,
 
 template void ExtractTriangleMeshCUDA<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractTriangleMeshCUDA<float, float, float>(FN_ARGUMENTS);
+template void ExtractTriangleMeshCUDA<float, float, uint16_t>(FN_ARGUMENTS);
 
 #undef FN_ARGUMENTS
 
