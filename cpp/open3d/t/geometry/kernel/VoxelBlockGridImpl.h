@@ -247,9 +247,9 @@ void DownIntegrateCUDA(const core::Tensor& depth,
                 *depth_indexer.GetDataPtr<input_depth_t>(ui, vi) / depth_scale;
 
         //float sdf = depth - zc;
-        if (depth <= 0 || depth > depth_max || zc <= 0) {
-            return;
-        }
+        //if (depth <= 0 || depth > depth_max || zc <= 0) {
+        //    return;
+        //}
 
         //sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
         //sdf /= sdf_trunc;
@@ -260,8 +260,8 @@ void DownIntegrateCUDA(const core::Tensor& depth,
         index_t linear_idx = block_idx * resolution3 + voxel_idx;
         weight_t* weight_ptr = weight_base_ptr + linear_idx;
         weight_t weight = *weight_ptr;
-        float distance = depth - zc; // the larger the distance the more likely there is nothing (W := 0)
-        if(weight > 0) {
+        float distance_to_tsdf = depth - zc; // the larger the distance the more likely there is nothing (W := 0)
+        if(weight > 0.0) {
             /*
             From page 10 of https://docs.rs-online.com/f31c/A700000006942953.pdf
             Accuracy at distance:
@@ -272,11 +272,13 @@ void DownIntegrateCUDA(const core::Tensor& depth,
                     15.5mm @ 9m
             let's assume a linear interpolation works
             */
-            float accuracy_m = ( ( (5.0 / 1000.0) * (9.0 - depth) ) + ( (14.0 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
-            float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - depth) ) + ( (15.5 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
-            float worst_case_deviation_m = accuracy_m + standard_deviation_m;
-            float exponent = -0.5 * (distance * distance) / ( worst_case_deviation_m / 6.0); // assuming six-sigma
-            *weight_ptr = static_cast<weight_t>(weight * exp(down_integration_multiplier * exponent));
+            //float accuracy_m = ( ( (5.0 / 1000.0) * (9.0 - depth) ) + ( (14.0 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
+            //float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - depth) ) + ( (15.5 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
+            //float worst_case_deviation_m = accuracy_m + standard_deviation_m;
+            //float exponent = -0.5 * (distance * distance) / ( worst_case_deviation_m / 6.0); // assuming six-sigma
+            //float cte = 1.0 / (distance_to_tsdf * distance);
+            weight_t quadratic = static_cast<weight_t>(std::min(0.95, (1.0 / ( down_integration_multiplier * (distance_to_tsdf * distance_to_tsdf) ) ) ) );
+            *weight_ptr = static_cast<weight_t>(weight * quadratic);
         }
     });
 #if defined(__CUDACC__)
@@ -433,10 +435,7 @@ void IntegrateCPU
                 }
             }
         }
-        // Using simplified version of:
-        // https://arxiv.org/pdf/1611.03631.pdf
-        weight_t quadratic = static_cast<weight_t>(std::min(1.0, (1.0 / (depth * depth))));
-        *weight_ptr = weight + quadratic;
+        *weight_ptr = weight + 1;
     });
 
 #if defined(__CUDACC__)
@@ -632,7 +631,28 @@ void IntegrateCPU
                 }
             }
         }
-        *weight_ptr = weight + 1;
+        if (weight < 10.0) {
+            // Using simplified version of:
+            // https://arxiv.org/pdf/1611.03631.pdf
+            weight_t quadratic = static_cast<weight_t>(std::min(1.0, (1.0 / (depth * depth))));
+            *weight_ptr = weight + quadratic;
+        }
+        /*
+            THIS IS AN ALTERNATIVE TO CONSIDER INSPIRED IN THE DOWN INTEGRATION
+        From page 10 of https://docs.rs-online.com/f31c/A700000006942953.pdf
+        Accuracy at distance:
+                <  5mm @ 1m
+                < 14mm @ 9m
+        Standard deviation at distance:
+                    2.5mm @ 1m
+                15.5mm @ 9m
+        let's assume a linear interpolation works
+        float accuracy_m = ( ( (5.0 / 1000.0) * (9.0 - depth) ) + ( (14.0 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
+        float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - depth) ) + ( (15.5 / 1000.0) * (depth - 1.0) ) ) / (9.0 - 1.0);
+        float worst_case_deviation_m = accuracy_m + standard_deviation_m;
+        float exponent = -0.5 * (sdf * sdf) / ( worst_case_deviation_m / 6.0); // assuming six-sigma
+        *weight_ptr = static_cast<weight_t>(weight + exp( exponent ) );
+        */
     });
 
 #if defined(__CUDACC__)
@@ -1653,7 +1673,8 @@ void ExtractDetectionPointCloudCPU
     const index_t* indices_ptr = indices.GetDataPtr<index_t>();
 
     if (!block_value_map.Contains("tsdf") ||
-        !block_value_map.Contains("weight")) {
+        !block_value_map.Contains("weight") ||
+        !block_value_map.Contains("probabilities")) {
         utility::LogError(
                 "TSDF, weight and/or probabilities not allocated in blocks, please implement "
                 "customized integration.");
@@ -1666,10 +1687,8 @@ void ExtractDetectionPointCloudCPU
     if (block_value_map.Contains("color")) {
         color_base_ptr = block_value_map.at("color").GetDataPtr<color_t>();
     }
-    const float* probs_base_ptr = nullptr;
-    if (block_value_map.Contains("probabilities")) {
-        probs_base_ptr = block_value_map.at("probabilities").GetDataPtr<float>();
-    }
+
+    const float* probs_base_ptr = block_value_map.at("probabilities").GetDataPtr<float>();
 
     index_t n_blocks = indices.GetLength();
     index_t n = n_blocks * resolution3;
@@ -1714,7 +1733,11 @@ void ExtractDetectionPointCloudCPU
             index_t linear_idx = block_idx * resolution3 + voxel_idx;
             float tsdf_o = tsdf_base_ptr[linear_idx];
             float weight_o = weight_base_ptr[linear_idx];
-            if (weight_o <= weight_threshold) return;
+            // TODO: this has to be modified to support multiple classes
+            const float* probs_o_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx;
+            float probabilities_o = *probs_o_ptr;
+            if (weight_o <= weight_threshold || probabilities_o < minimum_probability) return;
 
             // Enumerate x-y-z directions
             for (index_t i = 0; i < 3; ++i) {
@@ -1725,7 +1748,11 @@ void ExtractDetectionPointCloudCPU
 
                 float tsdf_i = tsdf_base_ptr[linear_idx_i];
                 float weight_i = weight_base_ptr[linear_idx_i];
-                if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
+                // TODO: this has to be modified to support multiple classes
+                const float* probs_i_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx_i;
+                float probabilities_i = *probs_i_ptr;
+                if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0 && probabilities_i >= minimum_probability) {
                     OPEN3D_ATOMIC_ADD(count_ptr, 1);
                 }
             }
@@ -1824,7 +1851,15 @@ void ExtractDetectionPointCloudCPU
 
             float tsdf_i = tsdf_base_ptr[linear_idx_i];
             float weight_i = weight_base_ptr[linear_idx_i];
-            if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
+            const float* probs_o_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx;
+            float p_o = probs_o_ptr[class_index];
+
+            const float* probs_i_ptr =
+                    probs_base_ptr + (class_index + 1) * linear_idx_i;
+            float p_i = probs_i_ptr[class_index];
+
+            if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0 && p_o >= minimum_probability && p_i >= minimum_probability) {
                 float ratio = (0 - tsdf_o) / (tsdf_i - tsdf_o);
 
                 index_t idx = OPEN3D_ATOMIC_ADD(count_ptr, 1);
@@ -1834,25 +1869,8 @@ void ExtractDetectionPointCloudCPU
                            "estimation!\n");
                     return;
                 }
-
-                if (probs_base_ptr) {
-                    float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
-                    // TODO: the "1" below line shall be "num_classes"
-                    const float* probs_o_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx;
-                    float p_o = probs_o_ptr[0];
-
-                    // TODO: the "1" below line shall be "num_classes"
-                    const float* probs_i_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx_i;
-                    float p_i = probs_i_ptr[0];
-
-                    probs_ptr[0] = ((1 - ratio) * p_o + ratio * p_i);
-                    if(probs_ptr[0] < minimum_probability){
-                        // discard points below threshold
-                        continue;
-                    }
-                }
+                float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
+                probs_ptr[class_index] = ((1 - ratio) * p_o + ratio * p_i);
 
 
                 float* point_ptr = point_indexer.GetDataPtr<float>(idx);

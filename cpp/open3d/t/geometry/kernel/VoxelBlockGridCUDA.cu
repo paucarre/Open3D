@@ -319,8 +319,9 @@ void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
                 */
                 float accuracy_m = ( ( (5.0 / 1000.0) * (9.0 - d) ) + ( (14.0 / 1000.0) * (d - 1.0) ) ) / (9.0 - 1.0);
                 float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - d) ) + ( (15.5 / 1000.0) * (d - 1.0) ) ) / (9.0 - 1.0);
+                float worst_case_scenario_m = accuracy_m + standard_deviation_m;
                 // 3 times standard deviation is about 99% outside.
-                const float t_max = max(0.0, min(d - sdf_trunc - (depth_std_times * standard_deviation_m) - accuracy_m, depth_max));
+                const float t_max = max(0.0, min(d - sdf_trunc - (depth_std_times * worst_case_scenario_m), depth_max));
                 const float t_step = (t_max - t_min) / step_size;
 
                 float t = t_min;
