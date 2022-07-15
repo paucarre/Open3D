@@ -1655,13 +1655,8 @@ void ExtractDetectionPointCloudCPU
          float voxel_size,
          float weight_threshold,
          int& valid_size,
-         core::Tensor& background_indices,
-         core::Tensor& object_indices) {
+         core::Tensor& points_class_index) {
     core::Device device = block_keys.GetDevice();
-
-    int background_valid_size = 6000000;
-    int object_valid_size = 6000000;
-
 
     // Parameters
     index_t resolution2 = resolution * resolution;
@@ -1705,22 +1700,10 @@ void ExtractDetectionPointCloudCPU
                        block_keys.GetDevice());
     index_t* count_ptr = count.GetDataPtr<index_t>();
 
-    core::Tensor background_count(std::vector<index_t>{0}, {1}, core::Int32,
-                       block_keys.GetDevice());
-    index_t* background_count_ptr = background_count.GetDataPtr<index_t>();
-
-    core::Tensor object_count(std::vector<index_t>{0}, {1}, core::Int32,
-                       block_keys.GetDevice());
-    index_t* object_count_ptr = object_count.GetDataPtr<index_t>();
 #else
     std::atomic<index_t> count_atomic(0);
     std::atomic<index_t>* count_ptr = &count_atomic;
 
-    std::atomic<index_t> background_count_atomic(0);
-    std::atomic<index_t>* background_count_ptr = &background_count_atomic;
-
-    std::atomic<index_t> object_count_atomic(0);
-    std::atomic<index_t>* object_count_ptr = &object_count_atomic;
 #endif
 
     /* Getting the indics involved in the isosurface.
@@ -1768,21 +1751,6 @@ void ExtractDetectionPointCloudCPU
                 float weight_i = weight_base_ptr[linear_idx_i];
                 // TODO: this has to be modified to support multiple classes
                 if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
-
-                    float ratio = (0 - tsdf_o) / (tsdf_i - tsdf_o);
-                    //float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
-                    const float* probs_o_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx;
-                    float p_o = probs_o_ptr[class_index];
-                    const float* probs_i_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx;
-                    float p_i = probs_i_ptr[class_index];
-                    float probability = ((1 - ratio) * p_o + ratio * p_i);
-                    if(probability >= minimum_probability){
-                        OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
-                    } else {
-                        OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
-                    }
                     OPEN3D_ATOMIC_ADD(count_ptr, 1);
                 }
             }
@@ -1793,21 +1761,10 @@ void ExtractDetectionPointCloudCPU
         valid_size = count[0].Item<index_t>();
         count[0] = 0;
 
-        background_valid_size = background_count[0].Item<index_t>();
-        background_count[0] = 0;
-
-        object_valid_size = object_count[0].Item<index_t>();
-        object_count[0] = 0;
-
 #else
         valid_size = (*count_ptr).load();
         (*count_ptr) = 0;
 
-        background_valid_size = (*background_count_ptr).load();
-        (*background_count_ptr) = 0;
-
-        object_valid_size = (*object_count_ptr).load();
-        (*object_count_ptr) = 0;
 #endif
     }
 
@@ -1839,19 +1796,9 @@ void ExtractDetectionPointCloudCPU
 
     }
 
-    background_indices = core::Tensor({background_valid_size, 1}, core::UInt32, device);
-    ArrayIndexer background_indices_indexer = ArrayIndexer(background_indices, 1);
 
-    object_indices = core::Tensor({object_valid_size, 1}, core::UInt32, device);
-    ArrayIndexer object_indices_indexer = ArrayIndexer(object_indices, 1);
-
-    utility::LogInfo("Counted Object Size: {}", object_valid_size);
-    utility::LogInfo("Counted Background Size: {}", background_valid_size);
-    utility::LogInfo("Counted Size: {}", valid_size);
-
-    if(background_valid_size + object_valid_size < 0) {
-        utility::LogError("I'm doing this because the compiler is stupid and otherwise complains");
-    }
+    points_class_index = core::Tensor({valid_size, 1}, core::UInt32, device);
+    ArrayIndexer points_class_index_indexer = ArrayIndexer(points_class_index, 1);
 
 
     core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
@@ -1931,14 +1878,14 @@ void ExtractDetectionPointCloudCPU
 
                 float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
                 probs_ptr[class_index] = ((1 - ratio) * p_o + ratio * p_i);
+
+                unsigned int* points_class_index_ptr = points_class_index_indexer.GetDataPtr<unsigned int>(idx);
+
                 if(probs_ptr[class_index] >= minimum_probability){
-                    index_t object_idx = OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
-                    unsigned char* object_indices_ptr = object_indices_indexer.GetDataPtr<unsigned char>(object_idx);
-                    *object_indices_ptr = idx;
+                    *points_class_index_ptr = class_index;
                 } else {
-                    index_t background_idx = OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
-                    unsigned char* background_indices_ptr = background_indices_indexer.GetDataPtr<unsigned char>(background_idx);
-                    *background_indices_ptr = idx;
+                    //background
+                    *points_class_index_ptr = class_index + 1;
                 }
 
 
@@ -1986,16 +1933,9 @@ void ExtractDetectionPointCloudCPU
 
 #if defined(__CUDACC__)
     index_t total_count = count.Item<index_t>();
-    index_t total_background_count = background_count.Item<index_t>();
-    index_t total_object_count = object_count.Item<index_t>();
 #else
     index_t total_count = (*count_ptr).load();
-    index_t total_background_count = (*background_count_ptr).load();
-    index_t total_object_count = (*object_count_ptr).load();
 #endif
-    utility::LogInfo("Processed Size: {}", total_count);
-    utility::LogInfo("Processed Background Size: {}", total_background_count);
-    utility::LogInfo("Processed Object Size: {}", total_object_count);
 
     utility::LogDebug("{} vertices extracted", total_count);
     valid_size = total_count;

@@ -598,8 +598,7 @@ void ExtractDetectionPointCloud(
                        float voxel_size,
                        float weight_threshold,
                        index_t& valid_size,
-                       core::Tensor& background_indicies,
-                       core::Tensor& object_indicies) {
+                       core::Tensor& points_class_index) {
     using tsdf_t = float;
     core::Dtype block_weight_dtype = core::Dtype::Float32;
     core::Dtype block_color_dtype = core::Dtype::Float32;
@@ -619,8 +618,7 @@ void ExtractDetectionPointCloud(
                             block_indices, nb_block_indices, nb_block_masks,
                             block_keys, block_value_map, points, normals,
                             colors, probabilities, block_resolution, voxel_size,
-                            weight_threshold, valid_size, background_indicies,
-                            object_indicies);
+                            weight_threshold, valid_size, points_class_index);
                 });
 
     } else if (block_indices.IsCUDA()) {
@@ -632,8 +630,7 @@ void ExtractDetectionPointCloud(
                             block_indices, nb_block_indices, nb_block_masks,
                             block_keys, block_value_map, points, normals,
                             colors, probabilities, block_resolution, voxel_size,
-                            weight_threshold, valid_size, background_indicies,
-                            object_indicies);
+                            weight_threshold, valid_size, points_class_index);
                 });
 #else
         utility::LogError("Not compiled with CUDA, but CUDA device is used.");
