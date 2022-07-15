@@ -181,7 +181,9 @@ void ExtractDetectionPointCloud(
                        index_t block_resolution,
                        float voxel_size,
                        float weight_threshold,
-                       index_t& valid_size);
+                       index_t& valid_size,
+                       core::Tensor& background_indicies,
+                       core::Tensor& object_indicies);
 
 void ExtractTriangleMesh(const core::Tensor& block_indices,
                          const core::Tensor& inv_block_indices,
@@ -330,7 +332,9 @@ void ExtractDetectionPointCloudCPU(
                           index_t block_resolution,
                           float voxel_size,
                           float weight_threshold,
-                          index_t& valid_size);
+                          index_t& valid_size,
+                          core::Tensor& background_indicies,
+                          core::Tensor& object_indicies);
 
 template <typename tsdf_t, typename weight_t, typename color_t>
 void ExtractTriangleMeshCPU(const core::Tensor& block_indices,
@@ -508,7 +512,9 @@ void ExtractDetectionPointCloudCUDA(
                        index_t block_resolution,
                        float voxel_size,
                        float weight_threshold,
-                       index_t& valid_size);
+                       index_t& valid_size,
+                       core::Tensor& background_indicies,
+                       core::Tensor& object_indicies);
 
 template <typename tsdf_t, typename weight_t, typename color_t>
 void ExtractTriangleMeshCUDA(const core::Tensor& block_indices,

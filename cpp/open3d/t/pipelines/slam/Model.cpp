@@ -147,11 +147,12 @@ t::geometry::PointCloud Model::ExtractPointCloud(float weight_threshold,
     return voxel_grid_.ExtractPointCloud(weight_threshold, estimated_number);
 }
 
-t::geometry::PointCloud Model::ExtractDetectionPointCloud(float weight_threshold,
+std::vector<t::geometry::PointCloud> Model::ExtractDetectionPointCloud(float weight_threshold,
                                               int estimated_number,
                                               int class_index,
                                               float minimum_probability){
-    return voxel_grid_.ExtractDetectionPointCloud(weight_threshold, estimated_number, class_index, minimum_probability);
+    return voxel_grid_.ExtractDetectionPointCloud(weight_threshold,
+        estimated_number, class_index, minimum_probability);
 }
 
 t::geometry::TriangleMesh Model::ExtractTriangleMesh(float weight_threshold,

@@ -526,7 +526,8 @@ template void ExtractPointCloudCUDA<float, float, uint16_t>(FN_ARGUMENTS);
             core::Tensor &points, core::Tensor &normals, core::Tensor &colors, \
             core::Tensor &vertex_probabilities,                                \
             index_t block_resolution, float voxel_size,                        \
-            float weight_threshold, index_t &valid_size                        \
+            float weight_threshold, index_t &valid_size,                       \
+            core::Tensor& background_indicies, core::Tensor& object_indicies   \
 
 template void ExtractDetectionPointCloudCUDA<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractDetectionPointCloudCUDA<float, float, float>(FN_ARGUMENTS);

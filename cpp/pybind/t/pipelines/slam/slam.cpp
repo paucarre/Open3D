@@ -122,8 +122,8 @@ void pybind_slam_model(py::module &m) {
     model.def("extract_detection_pointcloud", &Model::ExtractDetectionPointCloud,
               py::call_guard<py::gil_scoped_release>(),
               "Extract point cloud from the volumetric model for a given class.",
-              "weight_threshold"_a = 3.0, "estimated_number"_a = -1,
-              "class_index"_a = 0, "minimu_probability"_a = 0.1);
+              "weight_threshold"_a, "estimated_number"_a,
+              "class_index"_a, "minimum_probability"_a);
     docstring::ClassMethodDocInject(m, "Model", "extract_detection_pointcloud",
                                     map_shared_argument_docstrings);
 

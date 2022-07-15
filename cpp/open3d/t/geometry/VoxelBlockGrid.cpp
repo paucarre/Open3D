@@ -33,6 +33,7 @@
 #include "open3d/t/geometry/kernel/VoxelBlockGrid.h"
 #include "open3d/t/io/NumpyIO.h"
 #include "open3d/utility/FileSystem.h"
+//#include "open3d/t/geometry/kernel/GeometryIndexer.h"
 
 namespace open3d {
 namespace t {
@@ -587,10 +588,12 @@ PointCloud VoxelBlockGrid::ExtractPointCloud(float weight_threshold,
     return pcd;
 }
 
-PointCloud VoxelBlockGrid::ExtractDetectionPointCloud(float weight_threshold,
+std::vector<PointCloud> VoxelBlockGrid::ExtractDetectionPointCloud(float weight_threshold,
                                             int estimated_point_number,
                                             int class_index,
                                             float minimum_probability){
+
+
     AssertInitialized();
     core::Tensor active_buf_indices;
     block_hashmap_->GetActiveIndices(active_buf_indices);
@@ -605,22 +608,60 @@ PointCloud VoxelBlockGrid::ExtractDetectionPointCloud(float weight_threshold,
     core::Tensor block_keys = block_hashmap_->GetKeyTensor();
     TensorMap block_value_map =
             ConstructTensorMap(*block_hashmap_, name_attr_map_);
+
+    core::Tensor background_indices_tensor({0}, core::UInt32);
+    core::Tensor object_indicies({0}, core::UInt32);
+
     kernel::voxel_grid::ExtractDetectionPointCloud(
             class_index, minimum_probability,
             active_buf_indices, active_nb_buf_indices, active_nb_masks,
             block_keys, block_value_map, points, normals, colors,
             probabilities,
             block_resolution_, voxel_size_, weight_threshold,
-            estimated_point_number);
+            estimated_point_number, background_indices_tensor, object_indicies);
+
+    //points_class_indicies idx -> class
+    //
+    //ArrayIndexer points_class_indicies_indexer = ArrayIndexer(points_class_indicies, 1);
+    //index_t* points_class_indicies_ptr = points_class_indicies_indexer.GetDataPtr<index_t>(idx);
+
+    //points_class_indicies = core::Tensor({valid_size}, core::Int32, device);
+    //using index_t = int;
+    //using ArrayIndexer = open3d::t::geometry::kernel::TArrayIndexer<index_t>;
+    //ArrayIndexer points_class_indicies_indexer = ArrayIndexer(points_class_indicies, 1);
+
+    //std::vector<long int> background_indices;
+    //std::vector<long int> class_indices;
+    //auto points_class_indicies_ptr = points_class_indicies.GetDataPtr<unsigned char>();
+    //for(long int idx = 0; idx < estimated_point_number; ++idx) {
+    //    auto value = *(points_class_indicies_ptr + idx);
+        //utility::LogInfo("Value: {} : {}", idx, value);
+        //if(value == 0) {
+        //    class_indices.push_back(idx);
+        //} else if(value == 1) {
+        //    background_indices.push_back(idx);
+        //}
+    //}
+
+    //long int background_points = background_indices.size();
+    //core::Tensor background_indices_tensor(std::move(background_indices), {background_points});
+    //long int class_points = class_indices.size();
+    //core::Tensor class_indices_tensor(std::move(class_indices), {class_points});
+
+    //std::vector<core::Tensor> background_indices_selector{background_indices_tensor};
+    //auto pcd_background = PointCloud(points.IndexGet(background_indices_selector));
+    //pcd_background.SetPointNormals(normals.IndexGet(background_indices_selector));
+    //if (colors.GetLength() == normals.GetLength()) {
+    //    pcd_background.SetPointColors(colors.IndexGet(background_indices_selector));
+    //}
 
     auto pcd = PointCloud(points.Slice(0, 0, estimated_point_number));
     pcd.SetPointNormals(normals.Slice(0, 0, estimated_point_number));
-
     if (colors.GetLength() == normals.GetLength()) {
         pcd.SetPointColors(colors.Slice(0, 0, estimated_point_number));
     }
 
-    return pcd;
+    return std::vector<PointCloud>{pcd};
 }
 
 

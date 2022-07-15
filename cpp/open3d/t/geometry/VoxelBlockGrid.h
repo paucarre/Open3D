@@ -264,7 +264,7 @@ public:
                                  int estimated_point_number = -1);
 
 
-    PointCloud ExtractDetectionPointCloud(float weight_threshold ,
+    std::vector<PointCloud> ExtractDetectionPointCloud(float weight_threshold ,
                                               int estimated_number,
                                               int class_index,
                                               float minimum_probability);

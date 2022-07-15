@@ -1654,8 +1654,14 @@ void ExtractDetectionPointCloudCPU
          index_t resolution,
          float voxel_size,
          float weight_threshold,
-         int& valid_size) {
+         int& valid_size,
+         core::Tensor& background_indices,
+         core::Tensor& object_indices) {
     core::Device device = block_keys.GetDevice();
+
+    int background_valid_size = 6000000;
+    int object_valid_size = 6000000;
+
 
     // Parameters
     index_t resolution2 = resolution * resolution;
@@ -1698,10 +1704,25 @@ void ExtractDetectionPointCloudCPU
     core::Tensor count(std::vector<index_t>{0}, {1}, core::Int32,
                        block_keys.GetDevice());
     index_t* count_ptr = count.GetDataPtr<index_t>();
+
+    core::Tensor background_count(std::vector<index_t>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    index_t* background_count_ptr = background_count.GetDataPtr<index_t>();
+
+    core::Tensor object_count(std::vector<index_t>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    index_t* object_count_ptr = object_count.GetDataPtr<index_t>();
 #else
     std::atomic<index_t> count_atomic(0);
     std::atomic<index_t>* count_ptr = &count_atomic;
+
+    std::atomic<index_t> background_count_atomic(0);
+    std::atomic<index_t>* background_count_ptr = &background_count_atomic;
+
+    std::atomic<index_t> object_count_atomic(0);
+    std::atomic<index_t>* object_count_ptr = &object_count_atomic;
 #endif
+
     /* Getting the indics involved in the isosurface.
      *
      */
@@ -1734,10 +1755,7 @@ void ExtractDetectionPointCloudCPU
             float tsdf_o = tsdf_base_ptr[linear_idx];
             float weight_o = weight_base_ptr[linear_idx];
             // TODO: this has to be modified to support multiple classes
-            const float* probs_o_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx;
-            float probabilities_o = *probs_o_ptr;
-            if (weight_o <= weight_threshold || probabilities_o < minimum_probability) return;
+            if (weight_o <= weight_threshold) return;
 
             // Enumerate x-y-z directions
             for (index_t i = 0; i < 3; ++i) {
@@ -1749,21 +1767,47 @@ void ExtractDetectionPointCloudCPU
                 float tsdf_i = tsdf_base_ptr[linear_idx_i];
                 float weight_i = weight_base_ptr[linear_idx_i];
                 // TODO: this has to be modified to support multiple classes
-                const float* probs_i_ptr =
-                            probs_base_ptr + (class_index + 1) * linear_idx_i;
-                float probabilities_i = *probs_i_ptr;
-                if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0 && probabilities_i >= minimum_probability) {
+                if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
+
+                    float ratio = (0 - tsdf_o) / (tsdf_i - tsdf_o);
+                    //float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
+                    const float* probs_o_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx;
+                    float p_o = probs_o_ptr[class_index];
+                    const float* probs_i_ptr =
+                            probs_base_ptr + (class_index + 1) * linear_idx;
+                    float p_i = probs_i_ptr[class_index];
+                    float probability = ((1 - ratio) * p_o + ratio * p_i);
+                    if(probability >= minimum_probability){
+                        OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
+                    } else {
+                        OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
+                    }
                     OPEN3D_ATOMIC_ADD(count_ptr, 1);
                 }
             }
         });
 
+
 #if defined(__CUDACC__)
         valid_size = count[0].Item<index_t>();
         count[0] = 0;
+
+        background_valid_size = background_count[0].Item<index_t>();
+        background_count[0] = 0;
+
+        object_valid_size = object_count[0].Item<index_t>();
+        object_count[0] = 0;
+
 #else
         valid_size = (*count_ptr).load();
         (*count_ptr) = 0;
+
+        background_valid_size = (*background_count_ptr).load();
+        (*background_count_ptr) = 0;
+
+        object_valid_size = (*object_count_ptr).load();
+        (*object_count_ptr) = 0;
 #endif
     }
 
@@ -1771,7 +1815,6 @@ void ExtractDetectionPointCloudCPU
         points = core::Tensor({valid_size, 3}, core::Float32, device);
     }
     ArrayIndexer point_indexer(points, 1);
-
     // Normals
     ArrayIndexer normal_indexer;
     normals = core::Tensor({valid_size, 3}, core::Float32, device);
@@ -1793,7 +1836,23 @@ void ExtractDetectionPointCloudCPU
         // TODO: the "1" in the line below should be "num_classes"
         probabilities = core::Tensor({valid_size, 1}, core::Float32, device);
         probs_indexer = ArrayIndexer(probabilities, 1);
+
     }
+
+    background_indices = core::Tensor({background_valid_size, 1}, core::UInt32, device);
+    ArrayIndexer background_indices_indexer = ArrayIndexer(background_indices, 1);
+
+    object_indices = core::Tensor({object_valid_size, 1}, core::UInt32, device);
+    ArrayIndexer object_indices_indexer = ArrayIndexer(object_indices, 1);
+
+    utility::LogInfo("Counted Object Size: {}", object_valid_size);
+    utility::LogInfo("Counted Background Size: {}", background_valid_size);
+    utility::LogInfo("Counted Size: {}", valid_size);
+
+    if(background_valid_size + object_valid_size < 0) {
+        utility::LogError("I'm doing this because the compiler is stupid and otherwise complains");
+    }
+
 
     core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
         auto GetLinearIdx = [&] OPEN3D_DEVICE(
@@ -1859,7 +1918,7 @@ void ExtractDetectionPointCloudCPU
                     probs_base_ptr + (class_index + 1) * linear_idx_i;
             float p_i = probs_i_ptr[class_index];
 
-            if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0 && p_o >= minimum_probability && p_i >= minimum_probability) {
+            if (weight_i > weight_threshold && tsdf_i * tsdf_o < 0) {
                 float ratio = (0 - tsdf_o) / (tsdf_i - tsdf_o);
 
                 index_t idx = OPEN3D_ATOMIC_ADD(count_ptr, 1);
@@ -1869,8 +1928,18 @@ void ExtractDetectionPointCloudCPU
                            "estimation!\n");
                     return;
                 }
+
                 float* probs_ptr = probs_indexer.GetDataPtr<float>(idx);
                 probs_ptr[class_index] = ((1 - ratio) * p_o + ratio * p_i);
+                if(probs_ptr[class_index] >= minimum_probability){
+                    index_t object_idx = OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
+                    unsigned char* object_indices_ptr = object_indices_indexer.GetDataPtr<unsigned char>(object_idx);
+                    *object_indices_ptr = idx;
+                } else {
+                    index_t background_idx = OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
+                    unsigned char* background_indices_ptr = background_indices_indexer.GetDataPtr<unsigned char>(background_idx);
+                    *background_indices_ptr = idx;
+                }
 
 
                 float* point_ptr = point_indexer.GetDataPtr<float>(idx);
@@ -1917,9 +1986,16 @@ void ExtractDetectionPointCloudCPU
 
 #if defined(__CUDACC__)
     index_t total_count = count.Item<index_t>();
+    index_t total_background_count = background_count.Item<index_t>();
+    index_t total_object_count = object_count.Item<index_t>();
 #else
     index_t total_count = (*count_ptr).load();
+    index_t total_background_count = (*background_count_ptr).load();
+    index_t total_object_count = (*object_count_ptr).load();
 #endif
+    utility::LogInfo("Processed Size: {}", total_count);
+    utility::LogInfo("Processed Background Size: {}", total_background_count);
+    utility::LogInfo("Processed Object Size: {}", total_object_count);
 
     utility::LogDebug("{} vertices extracted", total_count);
     valid_size = total_count;
