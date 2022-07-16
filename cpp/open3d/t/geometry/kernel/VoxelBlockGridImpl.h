@@ -1640,7 +1640,7 @@ void ExtractDetectionPointCloudCUDA
 void ExtractDetectionPointCloudCPU
 #endif
         (
-         const int class_index,
+         const unsigned int class_index,
          const float minimum_probability,
          const core::Tensor& indices,
          const core::Tensor& nb_indices,
@@ -1655,7 +1655,7 @@ void ExtractDetectionPointCloudCPU
          float voxel_size,
          float weight_threshold,
          int& valid_size,
-         core::Tensor& points_class_index) {
+         core::Tensor& objects_class_index, core::Tensor &background_class_index) {
     core::Device device = block_keys.GetDevice();
 
     // Parameters
@@ -1768,6 +1768,23 @@ void ExtractDetectionPointCloudCPU
 #endif
     }
 
+#if defined(__CUDACC__)
+    core::Tensor object_count(std::vector<index_t>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    index_t* object_count_ptr = object_count.GetDataPtr<index_t>();
+
+    core::Tensor background_count(std::vector<index_t>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    index_t* background_count_ptr = background_count.GetDataPtr<index_t>();
+
+#else
+    std::atomic<index_t> object_count_atomic(0);
+    std::atomic<index_t>* object_count_ptr = &object_count_atomic;
+
+    std::atomic<index_t> background_count_atomic(0);
+    std::atomic<index_t>* background_count_ptr = &background_count_atomic;
+#endif
+
     if (points.GetLength() == 0) {
         points = core::Tensor({valid_size, 3}, core::Float32, device);
     }
@@ -1797,7 +1814,7 @@ void ExtractDetectionPointCloudCPU
     }
 
 
-    points_class_index = core::Tensor({valid_size, 1}, core::UInt32, device);
+    core::Tensor points_class_index({valid_size, 1}, core::UInt32, device);
     ArrayIndexer points_class_index_indexer = ArrayIndexer(points_class_index, 1);
 
 
@@ -1882,9 +1899,11 @@ void ExtractDetectionPointCloudCPU
                 unsigned int* points_class_index_ptr = points_class_index_indexer.GetDataPtr<unsigned int>(idx);
 
                 if(probs_ptr[class_index] >= minimum_probability){
+                    OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
                     *points_class_index_ptr = class_index;
                 } else {
                     //background
+                    OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
                     *points_class_index_ptr = class_index + 1;
                 }
 
@@ -1933,9 +1952,44 @@ void ExtractDetectionPointCloudCPU
 
 #if defined(__CUDACC__)
     index_t total_count = count.Item<index_t>();
+    index_t total_object_count = object_count.Item<index_t>();
+    index_t total_background_count = background_count.Item<index_t>();
+
 #else
     index_t total_count = (*count_ptr).load();
+    index_t total_object_count = (*object_count_ptr).load();
+    index_t total_background_count = (*background_count_ptr).load();
 #endif
+
+#if defined(__CUDACC__)
+    object_count[0] = 0;
+    background_count[0] = 0;
+#else
+    (*object_count_ptr) = 0;
+    (*background_count_ptr) = 0;
+#endif
+
+    background_class_index = core::Tensor({total_background_count}, core::Int64, device);
+    ArrayIndexer background_class_index_indexer = ArrayIndexer(background_class_index, 1);
+    objects_class_index = core::Tensor({total_object_count}, core::Int64, device);
+    ArrayIndexer objects_class_index_indexer = ArrayIndexer(objects_class_index, 1);
+
+    utility::LogDebug("{} vertices extracted", total_count);
+
+    core::ParallelFor(device, total_count, [=] OPEN3D_DEVICE(index_t workload_idx) {
+        unsigned int* points_class_index_ptr = points_class_index_indexer.GetDataPtr<unsigned int>(workload_idx);
+        if(*points_class_index_ptr == class_index) {
+            // object
+            auto object_idx = OPEN3D_ATOMIC_ADD(object_count_ptr, 1);
+            int64_t* object_index_ptr = objects_class_index_indexer.GetDataPtr<int64_t>(object_idx);
+            *object_index_ptr = static_cast<int64_t>(workload_idx);
+        } else if(*points_class_index_ptr == class_index + 1){
+            // background
+            auto background_idx = OPEN3D_ATOMIC_ADD(background_count_ptr, 1);
+            int64_t* background_index_ptr = background_class_index_indexer.GetDataPtr<int64_t>(background_idx);
+            *background_index_ptr = static_cast<int64_t>(workload_idx);
+        }
+    });
 
     utility::LogDebug("{} vertices extracted", total_count);
     valid_size = total_count;

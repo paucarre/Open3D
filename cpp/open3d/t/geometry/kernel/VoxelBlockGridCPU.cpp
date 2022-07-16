@@ -295,7 +295,7 @@ template void ExtractPointCloudCPU<float, float, uint16_t>(FN_ARGUMENTS);
 #undef FN_ARGUMENTS
 
 #define FN_ARGUMENTS                                                           \
-    const int class_index, const float minimum_probability,                    \
+    const unsigned int class_index, const float minimum_probability,                    \
     const core::Tensor &block_indices, const core::Tensor &nb_block_indices,   \
             const core::Tensor &nb_block_masks,                                \
             const core::Tensor &block_keys, const TensorMap &block_value_map,  \
@@ -303,7 +303,7 @@ template void ExtractPointCloudCPU<float, float, uint16_t>(FN_ARGUMENTS);
             core::Tensor &vertex_probabilities,                                \
             index_t block_resolution, float voxel_size,                        \
             float weight_threshold, index_t &valid_size,                       \
-            core::Tensor& points_class_index                                   \
+            core::Tensor& objects_class_index, core::Tensor &background_class_index                                   \
 
 template void ExtractDetectionPointCloudCPU<float, uint16_t, uint16_t>(FN_ARGUMENTS);
 template void ExtractDetectionPointCloudCPU<float, float, float>(FN_ARGUMENTS);

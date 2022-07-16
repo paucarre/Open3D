@@ -609,7 +609,8 @@ std::vector<PointCloud> VoxelBlockGrid::ExtractDetectionPointCloud(float weight_
     TensorMap block_value_map =
             ConstructTensorMap(*block_hashmap_, name_attr_map_);
 
-    core::Tensor points_class_index({0}, core::UInt32);
+    core::Tensor background_class_index({0}, core::UInt32);
+    core::Tensor objects_class_index({0}, core::UInt32);
 
     kernel::voxel_grid::ExtractDetectionPointCloud(
             class_index, minimum_probability,
@@ -617,20 +618,11 @@ std::vector<PointCloud> VoxelBlockGrid::ExtractDetectionPointCloud(float weight_
             block_keys, block_value_map, points, normals, colors,
             probabilities,
             block_resolution_, voxel_size_, weight_threshold,
-            estimated_point_number, points_class_index);
+            estimated_point_number,
+            objects_class_index,
+            background_class_index);
 
-    //points_class_indicies idx -> class
-    //
-
-    //points_class_indicies = core::Tensor({valid_size}, core::Int32, device);
-    //using index_t = int;
-    //using ArrayIndexer = open3d::t::geometry::kernel::TArrayIndexer<index_t>;
-    //ArrayIndexer points_class_indicies_indexer = ArrayIndexer(points_class_indicies, 1);
-
-    //ArrayIndexer points_class_indicies_indexer = ArrayIndexer(points_class_indicies, 1);
-    //index_t* points_class_indicies_ptr = points_class_indicies_indexer.GetDataPtr<index_t>(idx);
-    //auto points_class_indicies_ptr = points_class_indicies.GetDataPtr<unsigned char>();
-
+    /*
     std::vector<long int> background_indices;
     std::vector<long int> class_indices;
     for(long int idx = 0; idx < estimated_point_number; ++idx) {
@@ -652,28 +644,40 @@ std::vector<PointCloud> VoxelBlockGrid::ExtractDetectionPointCloud(float weight_
         {class_points},
         core::Int64,
         points_class_index.GetDevice());
+    */
+   /*
 
-    std::vector<core::Tensor> background_indices_selector{std::move(background_indices_tensor)};
+*/
+    utility::LogInfo("Shape of object indices {}", objects_class_index.GetShape());
+    utility::LogInfo("Shape of backgrounds indices {}", background_class_index.GetShape());
+    utility::LogInfo("Shape of   all  indices {}", points.GetShape());
+    utility::LogInfo("Total count of cloudpoints {}", estimated_point_number);
+
+
+    std::vector<core::Tensor> object_indices_selector{objects_class_index};
+    PointCloud pcd_object = PointCloud(points.IndexGet(object_indices_selector));
+    pcd_object.SetPointNormals(normals.IndexGet(object_indices_selector));
+    if (colors.GetLength() == normals.GetLength()) {
+        pcd_object.SetPointColors(colors.IndexGet(object_indices_selector));
+    }
+
+
+    /*
+    PointCloud pcd = PointCloud(points.Slice(0, 0, estimated_point_number));
+    pcd.SetPointNormals(normals.Slice(0, 0, estimated_point_number));
+    if (colors.GetLength() == normals.GetLength()) {
+        pcd.SetPointColors(colors.Slice(0, 0, estimated_point_number));
+    }
+    */
+
+    std::vector<core::Tensor> background_indices_selector{std::move(background_class_index)};
     auto pcd_background = PointCloud(points.IndexGet(background_indices_selector));
     pcd_background.SetPointNormals(normals.IndexGet(background_indices_selector));
     if (colors.GetLength() == normals.GetLength()) {
         pcd_background.SetPointColors(colors.IndexGet(background_indices_selector));
     }
 
-    std::vector<core::Tensor> object_indices_selector{std::move(class_indices_tensor)};
-    auto pcd_object = PointCloud(points.IndexGet(object_indices_selector));
-    pcd_object.SetPointNormals(normals.IndexGet(object_indices_selector));
-    if (colors.GetLength() == normals.GetLength()) {
-        pcd_object.SetPointColors(colors.IndexGet(object_indices_selector));
-    }
-
-    auto pcd = PointCloud(points.Slice(0, 0, estimated_point_number));
-    pcd.SetPointNormals(normals.Slice(0, 0, estimated_point_number));
-    if (colors.GetLength() == normals.GetLength()) {
-        pcd.SetPointColors(colors.Slice(0, 0, estimated_point_number));
-    }
-
-    return std::vector<PointCloud>{pcd, pcd_background, pcd_object};
+    return std::vector<PointCloud>{pcd_object, pcd_background};
 }
 
 
