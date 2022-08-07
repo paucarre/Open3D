@@ -114,7 +114,7 @@ void PointCloudTouchCPU(
 
     index_t block_count = set.size();
     if (block_count == 0) {
-        utility::LogError(
+        utility::LogInfo(
                 "No block is touched in TSDF volume, abort integration. Please "
                 "check specified parameters, "
                 "especially depth_scale and voxel_size");

@@ -110,7 +110,7 @@ void PointCloudTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
 
     index_t total_block_count = count.Item<index_t>();
     if (total_block_count == 0) {
-        utility::LogError(
+        utility::LogInfo(
                 "No block is touched in TSDF volume, abort integration. Please "
                 "check specified parameters, especially depth_scale and "
                 "voxel_size");
@@ -210,7 +210,7 @@ void DepthTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
 
     index_t total_block_count = static_cast<index_t>(count[0].Item<index_t>());
     if (total_block_count == 0) {
-        utility::LogError(
+        utility::LogInfo(
                 "No block is touched in TSDF volume, abort integration. Please "
                 "check specified parameters, especially depth_scale and "
                 "voxel_size");
@@ -267,8 +267,8 @@ void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
     index_t cols_strided = depth_indexer.GetShape(1) / stride;
     index_t n = rows_strided * cols_strided;
 
-    const index_t step_size = 3;
-    const index_t est_multipler_factor = (step_size + 1);
+    const index_t number_of_steps = 3;
+    const index_t est_multipler_factor = (number_of_steps + 1);
 
     static core::Tensor block_coordi;
     if (block_coordi.GetLength() != est_multipler_factor * n) {
@@ -321,12 +321,13 @@ void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
                 float standard_deviation_m = ( ( (2.5 / 1000.0) * (9.0 - d) ) + ( (15.5 / 1000.0) * (d - 1.0) ) ) / (9.0 - 1.0);
                 float worst_case_scenario_m = accuracy_m + standard_deviation_m;
                 // 3 times standard deviation is about 99% outside.
-                const float t_max = max(0.0, min(d - sdf_trunc - (depth_std_times * worst_case_scenario_m), depth_max));
-                const float t_step = (t_max - t_min) / step_size;
+                //  - (depth_std_times * worst_case_scenario_m)
+                const float t_max = max(0.0, d);// min( d - sdf_trunc + (5.0 / 100.0), depth_max ));
+                const float t_step = ( t_max - t_min ) / number_of_steps;
 
                 float t = t_min;
-                index_t idx = OPEN3D_ATOMIC_ADD(count_ptr, (step_size + 1));
-                for (index_t step = 0; step <= step_size; ++step) {
+                index_t idx = OPEN3D_ATOMIC_ADD(count_ptr, (number_of_steps + 1));
+                for (index_t step = 0; step <= number_of_steps; ++step) {
                     index_t offset = (step + idx) * 3;
 
                     index_t xb = static_cast<index_t>(
@@ -348,7 +349,7 @@ void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
 
     index_t total_block_count = static_cast<index_t>(count[0].Item<index_t>());
     if (total_block_count == 0) {
-        utility::LogError(
+        utility::LogInfo(
                 "No block is touched in TSDF volume, abort integration. Please "
                 "check specified parameters, especially depth_scale and "
                 "voxel_size");

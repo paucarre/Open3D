@@ -277,8 +277,9 @@ void DownIntegrateCUDA(const core::Tensor& depth,
             //float worst_case_deviation_m = accuracy_m + standard_deviation_m;
             //float exponent = -0.5 * (distance * distance) / ( worst_case_deviation_m / 6.0); // assuming six-sigma
             //float cte = 1.0 / (distance_to_tsdf * distance);
-            weight_t quadratic = static_cast<weight_t>(std::min(0.95, (1.0 / ( down_integration_multiplier * (distance_to_tsdf * distance_to_tsdf) ) ) ) );
-            *weight_ptr = static_cast<weight_t>(weight * quadratic);
+            float distance_to_tsdf_mm = distance_to_tsdf * 1000.0;
+            weight_t quadratic = down_integration_multiplier; // / ( distance_to_tsdf_mm * distance_to_tsdf_mm );
+            *weight_ptr = std::max(static_cast<weight_t>(weight - quadratic), static_cast<weight_t>(0.0));
         }
     });
 #if defined(__CUDACC__)
@@ -634,8 +635,9 @@ void IntegrateCPU
         if (weight < 10.0) {
             // Using simplified version of:
             // https://arxiv.org/pdf/1611.03631.pdf
-            weight_t quadratic = static_cast<weight_t>(std::min(1.0, (1.0 / (depth * depth))));
-            *weight_ptr = weight + quadratic;
+            //float depth_mm = depth * 1000.0;
+            //double quadratic = std::min( 1.0, 1.0 / ( depth_mm * depth_mm ) );
+            *weight_ptr = weight + 1.0; // static_cast<weight_t>(quadratic);
         }
         /*
             THIS IS AN ALTERNATIVE TO CONSIDER INSPIRED IN THE DOWN INTEGRATION
@@ -1991,7 +1993,7 @@ void ExtractDetectionPointCloudCPU
         }
     });
 
-    utility::LogDebug("{} vertices extracted", total_count);
+    utility::LogInfo("{} vertices extracted", total_count);
     valid_size = total_count;
 
 #if defined(BUILD_CUDA_MODULE) && defined(__CUDACC__)
