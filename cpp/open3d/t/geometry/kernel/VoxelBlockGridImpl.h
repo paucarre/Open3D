@@ -241,21 +241,8 @@ void DownIntegrateCUDA(const core::Tensor& depth,
         index_t ui = static_cast<index_t>(u);
         index_t vi = static_cast<index_t>(v);
 
-        // Associate image workload and compute SDF and
-        // TSDF.
         float depth =
                 *depth_indexer.GetDataPtr<input_depth_t>(ui, vi) / depth_scale;
-
-        //float sdf = depth - zc;
-        //if (depth <= 0 || depth > depth_max || zc <= 0) {
-        //    return;
-        //}
-
-        //sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
-        //sdf /= sdf_trunc;
-        //tsdf_t* tsdf_ptr = tsdf_base_ptr + linear_idx;
-        //float inv_wsum = 1.0f / (*weight_ptr + 1);
-        //tsdf_ptr = (weight * (*tsdf_ptr) + sdf) * inv_wsum;
 
         index_t linear_idx = block_idx * resolution3 + voxel_idx;
         weight_t* weight_ptr = weight_base_ptr + linear_idx;
@@ -286,6 +273,95 @@ void DownIntegrateCUDA(const core::Tensor& depth,
     core::cuda::Synchronize();
 #endif
 }
+
+
+#if defined(__CUDACC__)
+template <typename weight_t>
+void DeallocateCUDA(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor voxel_block_coords) {
+    index_t resolution2 = resolution * resolution;
+    index_t resolution3 = resolution2 * resolution;
+
+    core::Device device = block_keys.GetDevice();
+
+    const index_t* indices_ptr = block_indices.GetDataPtr<index_t>();
+    if (!block_value_map.Contains("weight")) {
+        utility::LogError(
+                "Weight not allocated in blocks, please implement "
+                "customized integration.");
+    }
+
+    // count number of empty voxels per block
+    weight_t* weight_base_ptr =
+            block_value_map.at("weight").GetDataPtr<weight_t>();
+    core::Tensor count = core::Tensor::Zeros({block_indices.GetLength()}, core::Int32,
+                       block_keys.GetDevice());
+    int* count_ptr = count.GetDataPtr<int>();
+    index_t n = block_indices.GetLength() * resolution3;
+    core::ParallelFor(device, n, [=] OPEN3D_DEVICE(index_t workload_idx) {
+        // Natural index (0, N) -> (block_idx, voxel_idx)
+        index_t index_idx = workload_idx / resolution3;
+        index_t block_idx = indices_ptr[index_idx];
+        index_t voxel_idx = workload_idx % resolution3;
+        index_t linear_idx = block_idx * resolution3 + voxel_idx;
+        weight_t* weight_ptr = weight_base_ptr + linear_idx;
+        weight_t weight = *weight_ptr;
+        if(weight <= weight_threshold) {
+            int* current_count_ptr = count_ptr + index_idx;
+            OPEN3D_ATOMIC_ADD(current_count_ptr, 1);
+        }
+    });
+    core::cuda::Synchronize();
+
+    // count empty blocks
+    index_t num_blocks = block_indices.GetLength();
+    core::Tensor empty_blocks_counter(std::vector<int>{0}, {block_indices.GetLength()}, core::Int32,
+                       block_keys.GetDevice());
+    int* empty_blocks_counter_ptr = empty_blocks_counter.GetDataPtr<int>();
+    core::ParallelFor(device, num_blocks, [=] OPEN3D_DEVICE(index_t index_idx) {
+        int* current_count_ptr = count_ptr + index_idx;
+        int block_count =  *current_count_ptr;
+        if(block_count == resolution3) {
+            OPEN3D_ATOMIC_ADD(empty_blocks_counter_ptr, 1);
+        }
+    });
+    core::cuda::Synchronize();
+
+    // add coordinates of empty voxel blocks into returned-by-reference tensor
+    ArrayIndexer block_keys_indexer(block_keys, 1);
+    int empty_blocks_counter_value = empty_blocks_counter[0].Item<int>();
+    voxel_block_coords =
+            core::Tensor({empty_blocks_counter_value, 3}, core::Int32, device);
+    index_t *voxel_block_coord_ptr = voxel_block_coords.GetDataPtr<index_t>();
+    *empty_blocks_counter_ptr = 0;
+    core::ParallelFor(device, num_blocks,
+                      [=] OPEN3D_DEVICE(index_t index_idx) {
+                            // no need to use masks as the filtering
+                            // has already done beforehand and thus we can ensure
+                            // that all the blocks have mask == 1
+                            int* current_count_ptr = count_ptr + index_idx;
+                            int block_count =  *current_count_ptr;
+                            if(block_count == resolution3) {
+                                index_t block_idx = indices_ptr[index_idx];
+                                index_t* block_key_ptr =
+                                    block_keys_indexer.GetDataPtr<index_t>(block_idx);
+                                index_t coord_offset = OPEN3D_ATOMIC_ADD(empty_blocks_counter_ptr, 1);
+                                voxel_block_coord_ptr[coord_offset + 0] =
+                                        block_key_ptr[0];
+                                voxel_block_coord_ptr[coord_offset + 1] =
+                                        block_key_ptr[1];
+                                voxel_block_coord_ptr[coord_offset + 2] =
+                                        block_key_ptr[2];
+                            }
+                      });
+    core::cuda::Synchronize();
+}
+#endif
 
 template <typename input_depth_t,
           typename input_color_t,
@@ -403,6 +479,11 @@ void IntegrateCPU
         sdf = sdf < sdf_trunc ? sdf : sdf_trunc;
         sdf /= sdf_trunc;
 
+        // This works because values are SoA, and thus all their data
+        // is compact. Therefore, to access the address of a value
+        // one can flatten the whole memory as a linear index.
+        // One can start from the "block_index * resolution3", which is an address,
+        // and move to the address of the voxel by using the remaining offset.
         index_t linear_idx = block_idx * resolution3 + voxel_idx;
 
         tsdf_t* tsdf_ptr = tsdf_base_ptr + linear_idx;
@@ -639,6 +720,7 @@ void IntegrateCPU
             //double quadratic = std::min( 1.0, 1.0 / ( depth_mm * depth_mm ) );
             *weight_ptr = weight + 1.0; // static_cast<weight_t>(quadratic);
         }
+
         /*
             THIS IS AN ALTERNATIVE TO CONSIDER INSPIRED IN THE DOWN INTEGRATION
         From page 10 of https://docs.rs-online.com/f31c/A700000006942953.pdf

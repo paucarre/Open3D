@@ -72,6 +72,11 @@ void UnseenFrustumDeepTouch(std::shared_ptr<core::HashMap> &hashmap,
                     index_t stride,
                     float depth_std_times);
 
+void WeightsBelowThresoldDeepTouch(std::shared_ptr<core::HashMap> &hashmap,
+                                float weight_threshold,
+                                index_t voxel_grid_resolution,
+                                float voxel_size) ;
+
 void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                                             const core::Tensor& block_keys,
                                             core::Tensor& voxel_coords,
@@ -123,6 +128,13 @@ void DownIntegrate(
          float depth_max,
          float down_integration_multiplier);
 
+void Deallocate(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor &voxel_block_coords);
 
 void EstimateRange(const core::Tensor& block_keys,
                    core::Tensor& range_minmax_map,
@@ -391,6 +403,7 @@ void GetVoxelCoordinatesAndFlattenedIndicesCUDA(const core::Tensor& buf_indices,
                                                 index_t block_resolution,
                                                 float voxel_size);
 
+
 template <typename input_depth_t,
           typename input_color_t,
           typename tsdf_t,
@@ -426,6 +439,16 @@ void DownIntegrateCUDA(
                 float depth_scale,
                 float depth_max,
                 float down_integration_multiplier);
+
+
+template <typename weight_t>
+void DeallocateCUDA(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor voxel_block_coords);
 
 template <typename input_depth_t,
         typename input_color_t,

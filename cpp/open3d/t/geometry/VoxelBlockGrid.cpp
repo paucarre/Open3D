@@ -264,6 +264,7 @@ core::Tensor VoxelBlockGrid::GetUniqueBlockCoordinates(
     return block_coords;
 }
 
+
 core::Tensor VoxelBlockGrid::UnseenFrustumGetUniqueBlockCoordinates(
         const Image &depth,
         const core::Tensor &intrinsic,
@@ -398,7 +399,6 @@ void VoxelBlockGrid::DownIntegrate(
     int64_t key_len = block_coords.GetLength();
     if (key_len > 0) {
         core::Tensor buf_indices, masks;
-        //TODO: probably no need to activate/create anything
         block_hashmap_->Activate(block_coords, buf_indices, masks);
         block_hashmap_->Find(block_coords, buf_indices, masks);
         //block_hashmap_->Erase(block_coords);
@@ -418,10 +418,18 @@ void VoxelBlockGrid::DownIntegrate(
             depth_scale,
             depth_max,
             down_integration_multiplier);
-            //voxel_size_ * trunc_voxel_multiplier);
+        core::Tensor empty_block_coords;
+        kernel::voxel_grid::Deallocate(
+            buf_indices,
+            block_keys,
+            block_value_map,
+            block_resolution_,
+            1.0,
+            empty_block_coords);
+        // block_hashmap_->Erase(block_coords, output_masks);
+        // voxel_size_ * trunc_voxel_multiplier);
     }
 }
-
 
 TensorMap VoxelBlockGrid::RayCast(const core::Tensor &block_coords,
                                   const core::Tensor &intrinsic,

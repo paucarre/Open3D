@@ -245,6 +245,8 @@ void DepthTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
     OPEN3D_CUDA_CHECK(cudaDeviceSynchronize());
 }
 
+
+
 void UnseenFrustumDeepTouchCUDA(std::shared_ptr<core::HashMap> &hashmap,
                     const core::Tensor &depth,
                     const core::Tensor &intrinsic,
@@ -466,6 +468,35 @@ template void DownIntegrateCUDA<uint16_t, float,  uint16_t>(
          float depth_max,
          float down_integration_multiplier);
 #undef FN_DOWN_INTEGRATE
+
+
+#define FN_DEALLOCATE
+
+template <typename weight_t>
+void DeallocateCUDA(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor voxel_block_coords);
+
+template void DeallocateCUDA<float>(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor voxel_block_coords);
+template void DeallocateCUDA<uint16_t>(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor voxel_block_coords);
+
+#undef FN_DEALLOCATE
 
 #define FN_ARGUMENTS_PROBS                                                                    \
     const core::Tensor &depth, const core::Tensor &color, const core::Tensor& probabilities,  \

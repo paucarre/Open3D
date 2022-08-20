@@ -119,7 +119,7 @@ void Model::Integrate(const Frame& input_frame,
                           trunc_voxel_multiplier);
 }
 
-void Model::Erase(const Frame& input_frame,
+void Model::DownIntegrate(const Frame& input_frame,
                       float depth_scale,
                       float depth_max,
                       float trunc_voxel_multiplier,

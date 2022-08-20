@@ -133,7 +133,7 @@ public:
 
 
 
-    void Erase(const Frame& input_frame,
+    void DownIntegrate(const Frame& input_frame,
                       float depth_scale,
                       float depth_max,
                       float trunc_voxel_multiplier,

@@ -110,8 +110,6 @@ void UnseenFrustumDeepTouch(std::shared_ptr<core::HashMap> &hashmap,
     //}
 }
 
-
-
 void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                                             const core::Tensor& block_keys,
                                             core::Tensor& voxel_coords,
@@ -236,6 +234,23 @@ void GetVoxelCoordinatesAndFlattenedIndices(const core::Tensor& buf_indices,
                     WEIGHT_DTYPE.ToString(), DEPTH_DTYPE.ToString());                \
         }                                                                            \
     }()
+
+#define DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT_DEALLOCATE(WEIGHT_DTYPE,  ...)   \
+    [&] {                                                                            \
+        if (WEIGHT_DTYPE == open3d::core::Float32) {                                 \
+            using weight_t = float;                                                  \
+            return __VA_ARGS__();                                                    \
+        } else if (WEIGHT_DTYPE == open3d::core::UInt16) {                           \
+            using weight_t = uint16_t;                                               \
+            return __VA_ARGS__();                                                    \
+        } else {                                                                     \
+            utility::LogError(                                                       \
+                    "Unsupported weight value data type combination. Expected "      \
+                    "(float) or (uint16), but received ({}). ",                      \
+                    WEIGHT_DTYPE.ToString());                                        \
+        }                                                                            \
+    }()
+
 
 #define DISPATCH_INPUT_DTYPE_TO_TEMPLATE_PROB(DEPTH_DTYPE, COLOR_DTYPE, PROBABILITY_DTYPE, ...)        \
     [&] {                                                                      \
@@ -440,6 +455,32 @@ void DownIntegrate(
                             depth_scale,
                             depth_max,
                             down_integration_multiplier);
+                });
+    #endif
+}
+
+
+void Deallocate(
+         const core::Tensor& block_indices,
+         const core::Tensor& block_keys,
+         TensorMap& block_value_map,
+         index_t resolution,
+         float weight_threshold,
+         core::Tensor &voxel_block_coords) {
+    core::Dtype block_weight_dtype = core::Dtype::Float32;
+    if (block_value_map.Contains("weight")) {
+        block_weight_dtype = block_value_map.at("weight").GetDtype();
+    }
+    #ifdef BUILD_CUDA_MODULE
+        DISPATCH_VALUE_DTYPE_TO_TEMPLATE_DOWN_INT_DEALLOCATE(
+                block_weight_dtype, [&] {
+                    DeallocateCUDA<weight_t>(
+                            block_indices,
+                            block_keys,
+                            block_value_map,
+                            resolution,
+                            weight_threshold,
+                            voxel_block_coords);
                 });
     #endif
 }

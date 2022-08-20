@@ -128,14 +128,15 @@ void pybind_slam_model(py::module &m) {
                                     map_shared_argument_docstrings);
 
 
-    model.def("erase", &Model::Erase,
+    model.def("down_integrate", &Model::DownIntegrate,
               py::call_guard<py::gil_scoped_release>(),
-              "Remove data from frustum volume.", "input_frame"_a,
+              "Reduce weights for voxels within the frustum's volume.", "input_frame"_a,
               "depth_scale"_a = 1000.0, "depth_max"_a = 3.0,
               "trunc_voxel_multiplier"_a = 8.0,
               "depth_std_times"_a = 6.0,
               "down_integration_multiplier"_a = 1.0);
-    docstring::ClassMethodDocInject(m, "Model", "erase",
+
+    docstring::ClassMethodDocInject(m, "Model", "down_integrate",
                                     map_shared_argument_docstrings);
 
     model.def("extract_trianglemesh", &Model::ExtractTriangleMesh,
