@@ -226,7 +226,10 @@ public:
         float sdf_trunc,
         float depth_scale,
         float depth_max,
-        float down_integration_multiplier);
+        float down_integration_multiplier,
+        bool erase,
+        float weight_threshold,
+        float occupancy);
 
     /// Specific operation for TSDF volumes.
     /// Perform volumetric ray casting in the selected block coordinates.

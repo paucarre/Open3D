@@ -134,7 +134,10 @@ void pybind_slam_model(py::module &m) {
               "depth_scale"_a = 1000.0, "depth_max"_a = 3.0,
               "trunc_voxel_multiplier"_a = 8.0,
               "depth_std_times"_a = 6.0,
-              "down_integration_multiplier"_a = 1.0);
+              "down_integration_multiplier"_a = 1.0,
+              "erase"_a = false,
+              "weight_threshold"_a = 1.0,
+              "occpancy"_a = 1.0);
 
     docstring::ClassMethodDocInject(m, "Model", "down_integrate",
                                     map_shared_argument_docstrings);

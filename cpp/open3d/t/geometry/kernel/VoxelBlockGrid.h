@@ -134,6 +134,7 @@ void Deallocate(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
+         float occupancy,
          core::Tensor &voxel_block_coords);
 
 void EstimateRange(const core::Tensor& block_keys,
@@ -448,7 +449,8 @@ void DeallocateCUDA(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
-         core::Tensor voxel_block_coords);
+         float occupancy,
+         core::Tensor& voxel_block_coords);
 
 template <typename input_depth_t,
         typename input_color_t,

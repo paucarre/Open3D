@@ -124,7 +124,10 @@ void Model::DownIntegrate(const Frame& input_frame,
                       float depth_max,
                       float trunc_voxel_multiplier,
                       float depth_std_multiplier,
-                      float down_integration_multiplier) {
+                      float down_integration_multiplier,
+                      bool erase,
+                      float weight_threshold,
+                      float occupancy) {
     t::geometry::Image depth = input_frame.GetDataAsImage("depth");
     core::Tensor intrinsic = input_frame.GetIntrinsics();
     core::Tensor extrinsic =
@@ -139,7 +142,10 @@ void Model::DownIntegrate(const Frame& input_frame,
                               depth_scale,
                               depth_max,
                               trunc_voxel_multiplier,
-                              down_integration_multiplier);
+                              down_integration_multiplier,
+                              erase,
+                              weight_threshold,
+                              occupancy);
 }
 
 t::geometry::PointCloud Model::ExtractPointCloud(float weight_threshold,

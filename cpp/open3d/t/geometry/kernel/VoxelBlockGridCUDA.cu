@@ -479,7 +479,8 @@ void DeallocateCUDA(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
-         core::Tensor voxel_block_coords);
+         float occupancy,
+         core::Tensor& voxel_block_coords);
 
 template void DeallocateCUDA<float>(
          const core::Tensor& block_indices,
@@ -487,14 +488,16 @@ template void DeallocateCUDA<float>(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
-         core::Tensor voxel_block_coords);
+         float occupancy,
+         core::Tensor& voxel_block_coords);
 template void DeallocateCUDA<uint16_t>(
          const core::Tensor& block_indices,
          const core::Tensor& block_keys,
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
-         core::Tensor voxel_block_coords);
+         float occupancy,
+         core::Tensor& voxel_block_coords);
 
 #undef FN_DEALLOCATE
 

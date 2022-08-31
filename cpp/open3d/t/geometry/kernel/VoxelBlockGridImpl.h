@@ -283,7 +283,8 @@ void DeallocateCUDA(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
-         core::Tensor voxel_block_coords) {
+         float occupancy,
+         core::Tensor& voxel_block_coords) {
     index_t resolution2 = resolution * resolution;
     index_t resolution3 = resolution2 * resolution;
 
@@ -320,13 +321,14 @@ void DeallocateCUDA(
 
     // count empty blocks
     index_t num_blocks = block_indices.GetLength();
-    core::Tensor empty_blocks_counter(std::vector<int>{0}, {block_indices.GetLength()}, core::Int32,
+    core::Tensor empty_blocks_counter(std::vector<int>{0}, {1}, core::Int32,
                        block_keys.GetDevice());
     int* empty_blocks_counter_ptr = empty_blocks_counter.GetDataPtr<int>();
     core::ParallelFor(device, num_blocks, [=] OPEN3D_DEVICE(index_t index_idx) {
         int* current_count_ptr = count_ptr + index_idx;
-        int block_count =  *current_count_ptr;
-        if(block_count == resolution3) {
+        index_t block_count =  (index_t)*current_count_ptr;
+        float current_occupancy = ( (float) block_count ) / ( (float) resolution3 );
+        if(current_occupancy >= occupancy) {
             OPEN3D_ATOMIC_ADD(empty_blocks_counter_ptr, 1);
         }
     });
@@ -338,7 +340,9 @@ void DeallocateCUDA(
     voxel_block_coords =
             core::Tensor({empty_blocks_counter_value, 3}, core::Int32, device);
     index_t *voxel_block_coord_ptr = voxel_block_coords.GetDataPtr<index_t>();
-    *empty_blocks_counter_ptr = 0;
+    core::Tensor empty_blocks_counter_blocks(std::vector<int>{0}, {1}, core::Int32,
+                       block_keys.GetDevice());
+    int* empty_blocks_counter_blocks_ptr = empty_blocks_counter_blocks.GetDataPtr<int>();
     core::ParallelFor(device, num_blocks,
                       [=] OPEN3D_DEVICE(index_t index_idx) {
                             // no need to use masks as the filtering
@@ -346,11 +350,12 @@ void DeallocateCUDA(
                             // that all the blocks have mask == 1
                             int* current_count_ptr = count_ptr + index_idx;
                             int block_count =  *current_count_ptr;
-                            if(block_count == resolution3) {
+                            float current_occupancy = ( (float) block_count ) / ( (float) resolution3 );
+                            if(current_occupancy >= occupancy) {
                                 index_t block_idx = indices_ptr[index_idx];
                                 index_t* block_key_ptr =
                                     block_keys_indexer.GetDataPtr<index_t>(block_idx);
-                                index_t coord_offset = OPEN3D_ATOMIC_ADD(empty_blocks_counter_ptr, 1);
+                                index_t coord_offset = OPEN3D_ATOMIC_ADD(empty_blocks_counter_blocks_ptr, 1) * 3;
                                 voxel_block_coord_ptr[coord_offset + 0] =
                                         block_key_ptr[0];
                                 voxel_block_coord_ptr[coord_offset + 1] =

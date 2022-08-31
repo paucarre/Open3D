@@ -392,7 +392,10 @@ void VoxelBlockGrid::DownIntegrate(
     float sdf_trunc,
     float depth_scale,
     float depth_max,
-    float down_integration_multiplier
+    float down_integration_multiplier,
+    bool erase,
+    float weight_threshold,
+    float occupancy
     ) {
     AssertInitialized();
     CheckBlockCoorinates(block_coords);
@@ -403,6 +406,7 @@ void VoxelBlockGrid::DownIntegrate(
         block_hashmap_->Find(block_coords, buf_indices, masks);
         //block_hashmap_->Erase(block_coords);
         core::Tensor block_keys = block_hashmap_->GetKeyTensor();
+        utility::LogInfo("Erase. Block Keys Shape {}", block_keys.GetShape());
         TensorMap block_value_map =
             ConstructTensorMap(*block_hashmap_, name_attr_map_);
         kernel::voxel_grid::DownIntegrate(
@@ -418,16 +422,24 @@ void VoxelBlockGrid::DownIntegrate(
             depth_scale,
             depth_max,
             down_integration_multiplier);
-        core::Tensor empty_block_coords;
-        kernel::voxel_grid::Deallocate(
-            buf_indices,
-            block_keys,
-            block_value_map,
-            block_resolution_,
-            1.0,
-            empty_block_coords);
-        // block_hashmap_->Erase(block_coords, output_masks);
-        // voxel_size_ * trunc_voxel_multiplier);
+        if(erase) {
+            core::Tensor empty_block_coords;
+            kernel::voxel_grid::Deallocate(
+                buf_indices,
+                block_keys,
+                block_value_map,
+                block_resolution_,
+                weight_threshold,
+                occupancy,
+                empty_block_coords);
+            utility::LogInfo("Erase. Buffer Indices Length {}", buf_indices.GetLength());
+            utility::LogInfo("Erase. Buffer Indices Shape {}", buf_indices.GetShape());
+            utility::LogInfo("Erase. Empty Block Keys Shape {}", empty_block_coords.GetShape());
+            core::Tensor output_masks;
+            if(empty_block_coords.GetLength() > 0) {
+                block_hashmap_->Erase(empty_block_coords, output_masks);
+            }
+        }
     }
 }
 

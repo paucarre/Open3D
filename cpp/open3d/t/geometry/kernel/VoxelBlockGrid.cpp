@@ -466,6 +466,7 @@ void Deallocate(
          TensorMap& block_value_map,
          index_t resolution,
          float weight_threshold,
+         float occupancy,
          core::Tensor &voxel_block_coords) {
     core::Dtype block_weight_dtype = core::Dtype::Float32;
     if (block_value_map.Contains("weight")) {
@@ -480,6 +481,7 @@ void Deallocate(
                             block_value_map,
                             resolution,
                             weight_threshold,
+                            occupancy,
                             voxel_block_coords);
                 });
     #endif
